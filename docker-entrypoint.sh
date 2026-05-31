@@ -58,7 +58,7 @@ EOF
 
 # PHP-FPM configuratie
 cat > /usr/local/etc/php-fpm.d/www.conf <<EOF
-[www]
+[$VOLUME_PREFIX]
 
 user = ${USERNAME}
 group = ${USERNAME}
@@ -81,7 +81,9 @@ catch_workers_output = yes
 ping.path = /ping
 ping.response = pong
 
-slowlog = /var/log/php-fpm-slow.log
+; Slow log naar stdout (voor Docker logging)
+; access.log = /proc/self/fd/2
+slowlog = /proc/self/fd/2
 request_slowlog_timeout = 10s
 
 security.limit_extensions = .php
