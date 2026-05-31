@@ -13,7 +13,7 @@ Geoptimaliseerde PHP-FPM image voor WordPress met APCu en OPcache.
 ```yaml
 services:
   php:
-    image: ghcr.io/jouw-gebruikersnaam/php-wordpress-base:latest
+    image: ghcr.io/hansvaneijsden/php-wordpress-base:latest
     container_name: ${CONTAINER_NAME}
     restart: unless-stopped
     user: root
