@@ -37,6 +37,14 @@ envsubst < /usr/local/etc/php/conf.d/opcache.template > /usr/local/etc/php/conf.
 envsubst < /usr/local/etc/php/conf.d/session.template > /usr/local/etc/php/conf.d/session.ini
 envsubst < /usr/local/etc/php/conf.d/mail.template > /usr/local/etc/php/conf.d/mail.ini
 
+# MySQL socket configuratie (zodat 'localhost' werkt)
+cat > /usr/local/etc/php/conf.d/mysql-socket.ini <<EOF
+; Default MySQL socket pad voor WordPress
+mysql.default_socket = /run/mysqld/mysqld.sock
+mysqli.default_socket = /run/mysqld/mysqld.sock
+pdo_mysql.default_socket = /run/mysqld/mysqld.sock
+EOF
+
 # msmtp configuratie
 cat > /etc/msmtprc <<EOF
 account default
@@ -48,7 +56,7 @@ tls off
 syslog LOG_MAIL
 EOF
 
-# PHP-FPM configuratie (volledig dynamisch)
+# PHP-FPM configuratie
 cat > /usr/local/etc/php-fpm.d/www.conf <<EOF
 [www]
 
@@ -95,4 +103,5 @@ fi
 # Start PHP-FPM
 echo "Starting PHP-FPM as user: ${USERNAME}"
 echo "Socket: /run/php/${CONTAINER_NAME}.sock"
+echo "MySQL socket: /run/mysqld/mysqld.sock"
 exec php-fpm --nodaemonize --allow-to-run-as-root
