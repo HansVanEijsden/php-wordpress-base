@@ -83,8 +83,12 @@ RUN { \
         echo 'sendmail_path = /usr/bin/msmtp -t'; \
     } > /usr/local/etc/php/conf.d/mail.template
 
-# --- Stap 3: Bereid FPM pool configuratie voor (geen variabelen hier, alleen placeholder) ---
+# --- Stap 3: Bereid FPM pool configuratie voor (met placeholders voor user/group) ---
 RUN cp /usr/local/etc/php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^user = .*/user = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^group = .*/group = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^listen.owner = .*/listen.owner = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^listen.group = .*/listen.group = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^pm.max_children = .*/pm.max_children = ${PM_MAX_CHILDREN}/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^pm.start_servers = .*/pm.start_servers = ${PM_START_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^pm.min_spare_servers = .*/pm.min_spare_servers = ${PM_MIN_SPARE_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \

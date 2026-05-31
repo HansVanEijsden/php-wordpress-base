@@ -10,6 +10,10 @@ fi
 # Verplichte environment variabelen check
 if [ -z "${PUID}" ] || [ -z "${PGID}" ] || [ -z "${USERNAME}" ]; then
     echo "ERROR: PUID, PGID, and USERNAME environment variables are required"
+    echo "Current values:"
+    echo "  PUID='${PUID}'"
+    echo "  PGID='${PGID}'"
+    echo "  USERNAME='${USERNAME}'"
     echo "Example: PUID=1002 PGID=1002 USERNAME=pim"
     exit 1
 fi
@@ -28,7 +32,7 @@ fi
 
 # Zet juiste eigenaren op directories
 echo "Setting permissions for cache and session directories..."
-chown -R "${USERNAME}":www-data /var/cache/php-opcache /var/lib/php/sessions
+chown -R "${USERNAME}":${USERNAME} /var/cache/php-opcache /var/lib/php/sessions
 chmod 755 /var/cache/php-opcache /var/lib/php/sessions
 
 # Genereer PHP configuratie uit templates
@@ -53,10 +57,11 @@ EOF
 
 # EERST environment vars vervangen in FPM config
 echo "Processing PHP-FPM pool configuration..."
+
+# Vervang eerst alle ${VAR} placeholders
 envsubst < /usr/local/etc/php-fpm.d/www.conf > /usr/local/etc/php-fpm.d/www.conf.envsubst
 
-# DAarna specifieke PHP-FPM syntax fixes
-# Vervang ${PM_TYPE} door de werkelijke waarde (dynamic, static, of ondemand)
+# Vervang daarna de PM_TYPE_PLACEHOLDER
 PM_TYPE_CLEAN=$(echo "${PM_TYPE:-dynamic}" | tr -d ' ')
 sed -i "s/PM_TYPE_PLACEHOLDER/${PM_TYPE_CLEAN}/g" /usr/local/etc/php-fpm.d/www.conf.envsubst
 
@@ -66,7 +71,12 @@ mv /usr/local/etc/php-fpm.d/www.conf.envsubst /usr/local/etc/php-fpm.d/www.conf
 # Toon de gegenereerde PM_TYPE waarde voor debugging
 echo "PM_TYPE set to: ${PM_TYPE_CLEAN}"
 
-# Toon welke configuratie is gegenereerd (voor debugging)
+# Toon welke user/group er in de FPM config staat (debugging)
+echo "FPM user/group settings:"
+grep "^user = " /usr/local/etc/php-fpm.d/www.conf
+grep "^group = " /usr/local/etc/php-fpm.d/www.conf
+
+# Toon welke configuratie is gegenereerd
 echo "Generated PHP configuration files:"
 ls -la /usr/local/etc/php/conf.d/*.ini
 
@@ -80,6 +90,10 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Start PHP-FPM als de juiste gebruiker
+# Start PHP-FPM als de juiste gebruiker (master process ook als USERNAME)
 echo "Starting PHP-FPM as user: ${USERNAME}"
+
+# Gebruik sudo of runuser om als specifieke gebruiker te starten
+# We doen dit door de user/group al in de config te hebben gezet
+# en dan --allow-to-run-as-root te gebruiken zodat FPM zelf switcht
 exec "$@" --allow-to-run-as-root
