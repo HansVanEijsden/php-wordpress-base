@@ -38,6 +38,7 @@ docker network create --subnet=172.50.0.0/24 phpnet
 
 ### Basis docker-compose.yaml
 
+```
 services:
   php:
     image: ghcr.io/hansvaneijsden/php-wordpress-base:latest
@@ -122,9 +123,11 @@ volumes:
     name: ${VOLUME_PREFIX}-php-opcache
   php-session-data:
     name: ${VOLUME_PREFIX}-php-sessions
+```
 
 ### Voorbeeld .env bestand
 
+```
 # Container instellingen
 CONTAINER_NAME=my-website-php
 VOLUME_PREFIX=my-website
@@ -165,6 +168,7 @@ PM_MAX_SPARE_SERVERS=10
 SMTP_HOST=127.0.0.1
 SMTP_PORT=25
 SMTP_FROM=localhost
+```
 
 ## Optimalisatie per WordPress installatie
 
