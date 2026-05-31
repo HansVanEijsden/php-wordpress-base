@@ -7,16 +7,21 @@ if ! command -v envsubst &> /dev/null; then
     exit 1
 fi
 
-# Gebruiker aanmaken op basis van PUID/PGID
-if ! id -u "${PUID}" > /dev/null 2>&1; then
-    echo "Creating user with PUID: ${PUID}, PGID: ${PGID}"
-    groupadd -g "${PGID}" "wpuser"
-    useradd -u "${PUID}" -g "wpuser" -m -s /bin/bash "wpuser"
-    usermod -a -G www-data "wpuser"
-    USERNAME="wpuser"
+# Verplichte environment variabelen check
+if [ -z "${PUID}" ] || [ -z "${PGID}" ] || [ -z "${USERNAME}" ]; then
+    echo "ERROR: PUID, PGID, and USERNAME environment variables are required"
+    echo "Example: PUID=1002 PGID=1002 USERNAME=pim"
+    exit 1
+fi
+
+# Gebruiker aanmaken op basis van PUID/PGID en USERNAME
+if ! id -u "${USERNAME}" > /dev/null 2>&1; then
+    echo "Creating user ${USERNAME} with PUID: ${PUID}, PGID: ${PGID}"
+    groupadd -g "${PGID}" "${USERNAME}"
+    useradd -u "${PUID}" -g "${USERNAME}" -m -s /bin/bash "${USERNAME}"
+    usermod -a -G www-data "${USERNAME}"
 else
-    USERNAME=$(id -nu "${PUID}")
-    echo "User ${USERNAME} already exists with PUID ${PUID}"
+    echo "User ${USERNAME} already exists with PUID $(id -u ${USERNAME})"
     # Zorg dat de gebruiker in www-data groep zit
     usermod -a -G www-data "${USERNAME}"
 fi
@@ -46,14 +51,34 @@ tls off
 syslog LOG_MAIL
 EOF
 
-# Vervang environment vars in FPM config
+# EERST environment vars vervangen in FPM config
 echo "Processing PHP-FPM pool configuration..."
-envsubst < /usr/local/etc/php-fpm.d/www.conf > /usr/local/etc/php-fpm.d/www.conf.tmp
-mv /usr/local/etc/php-fpm.d/www.conf.tmp /usr/local/etc/php-fpm.d/www.conf
+envsubst < /usr/local/etc/php-fpm.d/www.conf > /usr/local/etc/php-fpm.d/www.conf.envsubst
+
+# DAarna specifieke PHP-FPM syntax fixes
+# Vervang ${PM_TYPE} door de werkelijke waarde (dynamic, static, of ondemand)
+PM_TYPE_CLEAN=$(echo "${PM_TYPE:-dynamic}" | tr -d ' ')
+sed -i "s/PM_TYPE_PLACEHOLDER/${PM_TYPE_CLEAN}/g" /usr/local/etc/php-fpm.d/www.conf.envsubst
+
+# Vervang de originele config met de bewerkte versie
+mv /usr/local/etc/php-fpm.d/www.conf.envsubst /usr/local/etc/php-fpm.d/www.conf
+
+# Toon de gegenereerde PM_TYPE waarde voor debugging
+echo "PM_TYPE set to: ${PM_TYPE_CLEAN}"
 
 # Toon welke configuratie is gegenereerd (voor debugging)
 echo "Generated PHP configuration files:"
 ls -la /usr/local/etc/php/conf.d/*.ini
+
+# Valideer de FPM configuratie voor we starten
+echo "Validating PHP-FPM configuration..."
+php-fpm -t
+if [ $? -ne 0 ]; then
+    echo "ERROR: PHP-FPM configuration validation failed!"
+    echo "Check /usr/local/etc/php-fpm.d/www.conf for errors"
+    cat /usr/local/etc/php-fpm.d/www.conf
+    exit 1
+fi
 
 # Start PHP-FPM als de juiste gebruiker
 echo "Starting PHP-FPM as user: ${USERNAME}"

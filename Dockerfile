@@ -83,13 +83,19 @@ RUN { \
         echo 'sendmail_path = /usr/bin/msmtp -t'; \
     } > /usr/local/etc/php/conf.d/mail.template
 
-# --- Stap 3: Bereid FPM pool configuratie voor ---
-RUN sed -i 's/^pm.max_children = .*/pm.max_children = ${PM_MAX_CHILDREN}/' /usr/local/etc/php-fpm.d/www.conf && \
-    sed -i 's/^pm.start_servers = .*/pm.start_servers = ${PM_START_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf && \
-    sed -i 's/^pm.min_spare_servers = .*/pm.min_spare_servers = ${PM_MIN_SPARE_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf && \
-    sed -i 's/^pm.max_spare_servers = .*/pm.max_spare_servers = ${PM_MAX_SPARE_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf && \
-    echo "pm.max_requests = 500" >> /usr/local/etc/php-fpm.d/www.conf && \
-    echo "pm = ${PM_TYPE}" >> /usr/local/etc/php-fpm.d/www.conf
+# --- Stap 3: Bereid FPM pool configuratie voor (geen variabelen hier, alleen placeholder) ---
+RUN cp /usr/local/etc/php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^pm.max_children = .*/pm.max_children = ${PM_MAX_CHILDREN}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^pm.start_servers = .*/pm.start_servers = ${PM_START_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^pm.min_spare_servers = .*/pm.min_spare_servers = ${PM_MIN_SPARE_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^pm.max_spare_servers = .*/pm.max_spare_servers = ${PM_MAX_SPARE_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^pm = .*/pm = PM_TYPE_PLACEHOLDER/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    echo "pm.max_requests = 500" >> /usr/local/etc/php-fpm.d/www.conf.template && \
+    echo "request_terminate_timeout = 60s" >> /usr/local/etc/php-fpm.d/www.conf.template
+
+# Verwijder origineel en gebruik template
+RUN rm /usr/local/etc/php-fpm.d/www.conf && \
+    mv /usr/local/etc/php-fpm.d/www.conf.template /usr/local/etc/php-fpm.d/www.conf
 
 # --- Stap 4: Maak directories en voeg entrypoint toe ---
 RUN mkdir -p /var/cache/php-opcache /var/lib/php/sessions && \
