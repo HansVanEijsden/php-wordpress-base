@@ -12,13 +12,14 @@ LABEL org.opencontainers.image.created=$BUILD_DATE \
       org.opencontainers.image.revision=$VCS_REF \
       org.opencontainers.image.source="https://github.com/hansvaneijsden/php-wordpress-base"
 
-# --- Stap 1: Systeem dependencies (deze laag wordt gecached) ---
+# --- Stap 1: Systeem dependencies (inclusief envsubst via gettext) ---
 RUN apt-get update && apt-get install -y \
     libmagickwand-dev \
     libzip-dev \
     libicu-dev \
     msmtp \
     msmtp-mta \
+    gettext \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
         mysqli \
