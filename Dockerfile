@@ -12,7 +12,7 @@ LABEL org.opencontainers.image.created=$BUILD_DATE \
       org.opencontainers.image.revision=$VCS_REF \
       org.opencontainers.image.source="https://github.com/hansvaneijsden/php-wordpress-base"
 
-# --- Stap 1: Systeem dependencies (inclusief envsubst via gettext) ---
+# --- Stap 1: Systeem dependencies ---
 RUN apt-get update && apt-get install -y \
     libmagickwand-dev \
     libzip-dev \
@@ -39,8 +39,7 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-enable igbinary apcu imagick \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# --- Stap 2: Template configuratie bestanden ---
-# PHP basis configuratie
+# --- Stap 2: PHP configuratie templates ---
 RUN { \
         echo 'date.timezone = ${TIMEZONE}'; \
         echo 'memory_limit = ${PHP_MEMORY_LIMIT}'; \
@@ -52,14 +51,12 @@ RUN { \
         echo 'disable_functions = exec,passthru,shell_exec,system,proc_open,popen,parse_ini_file,show_source'; \
     } > /usr/local/etc/php/conf.d/wordpress.template
 
-# APCu template
 RUN { \
         echo 'apc.enabled = 1'; \
         echo 'apc.shm_size = ${APC_SHM_SIZE}'; \
         echo 'apc.serializer = igbinary'; \
     } > /usr/local/etc/php/conf.d/apcu.template
 
-# OPcache template
 RUN { \
         echo 'opcache.enable = 1'; \
         echo 'opcache.enable_cli = 1'; \
@@ -72,7 +69,6 @@ RUN { \
         echo 'opcache.file_cache_only = 0'; \
     } > /usr/local/etc/php/conf.d/opcache.template
 
-# Session template
 RUN { \
         echo 'session.save_handler = files'; \
         echo 'session.save_path = ${SESSION_SAVE_PATH}'; \
@@ -81,47 +77,21 @@ RUN { \
         echo 'session.serialize_handler = igbinary'; \
     } > /usr/local/etc/php/conf.d/session.template
 
-# Mail template
 RUN { \
         echo 'mail.add_x_header = On'; \
         echo 'sendmail_path = /usr/bin/msmtp -t'; \
     } > /usr/local/etc/php/conf.d/mail.template
 
-# --- Stap 3: Bereid FPM pool configuratie voor (met socket ipv TCP) ---
-RUN cp /usr/local/etc/php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^listen = .*/listen = \/run\/php\/${CONTAINER_NAME}.sock/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^listen.owner = .*/listen.owner = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^listen.group = .*/listen.group = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^listen.mode = .*/listen.mode = 0660/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^user = .*/user = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^group = .*/group = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^pm.max_children = .*/pm.max_children = ${PM_MAX_CHILDREN}/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^pm.start_servers = .*/pm.start_servers = ${PM_START_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^pm.min_spare_servers = .*/pm.min_spare_servers = ${PM_MIN_SPARE_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^pm.max_spare_servers = .*/pm.max_spare_servers = ${PM_MAX_SPARE_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^pm = .*/pm = PM_TYPE_PLACEHOLDER/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    echo "pm.max_requests = 500" >> /usr/local/etc/php-fpm.d/www.conf.template && \
-    echo "request_terminate_timeout = 60s" >> /usr/local/etc/php-fpm.d/www.conf.template && \
-    echo "ping.path = /ping" >> /usr/local/etc/php-fpm.d/www.conf.template && \
-    echo "ping.response = pong" >> /usr/local/etc/php-fpm.d/www.conf.template
+# --- Stap 3: Directories voor cache en sessions ---
+RUN mkdir -p /var/cache/php-opcache /var/lib/php/sessions /run/php && \
+    chmod 755 /var/cache/php-opcache /var/lib/php/sessions /run/php
 
-# Verwijder origineel en gebruik template
-RUN rm /usr/local/etc/php-fpm.d/www.conf && \
-    mv /usr/local/etc/php-fpm.d/www.conf.template /usr/local/etc/php-fpm.d/www.conf && \
-    mkdir -p /run/php && \
-    chmod 755 /run/php
-
-# --- Stap 4: Maak directories en voeg entrypoint toe ---
-RUN mkdir -p /var/cache/php-opcache /var/lib/php/sessions && \
-    chmod 755 /var/cache/php-opcache /var/lib/php/sessions
-
-# Kopieer entrypoint script
+# --- Stap 4: Entrypoint script ---
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /var/www/html
 
-# Expose standaard FastCGI poort
 EXPOSE 9000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
