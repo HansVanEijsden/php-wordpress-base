@@ -58,7 +58,7 @@ EOF
 
 # PHP-FPM configuratie
 cat > /usr/local/etc/php-fpm.d/www.conf <<EOF
-[$VOLUME_PREFIX]
+[www]
 
 user = ${USERNAME}
 group = ${USERNAME}
