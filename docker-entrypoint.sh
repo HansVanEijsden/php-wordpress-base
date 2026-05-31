@@ -10,15 +10,10 @@ fi
 # Verplichte environment variabelen check
 if [ -z "${PUID}" ] || [ -z "${PGID}" ] || [ -z "${USERNAME}" ] || [ -z "${CONTAINER_NAME}" ]; then
     echo "ERROR: PUID, PGID, USERNAME, and CONTAINER_NAME environment variables are required"
-    echo "Current values:"
-    echo "  PUID='${PUID}'"
-    echo "  PGID='${PGID}'"
-    echo "  USERNAME='${USERNAME}'"
-    echo "  CONTAINER_NAME='${CONTAINER_NAME}'"
     exit 1
 fi
 
-# Gebruiker aanmaken op basis van PUID/PGID en USERNAME
+# Gebruiker aanmaken
 if ! id -u "${USERNAME}" > /dev/null 2>&1; then
     echo "Creating user ${USERNAME} with PUID: ${PUID}, PGID: ${PGID}"
     groupadd -g "${PGID}" "${USERNAME}"
@@ -55,38 +50,75 @@ tls off
 syslog LOG_MAIL
 EOF
 
-# EERST environment vars vervangen in FPM config
-echo "Processing PHP-FPM pool configuration..."
+# === CRITICAL FIX: Bouw de FPM config helemaal opnieuw op ===
+echo "Building PHP-FPM configuration from scratch..."
 
-# Vervang eerst alle ${VAR} placeholders
-envsubst < /usr/local/etc/php-fpm.d/www.conf > /usr/local/etc/php-fpm.d/www.conf.envsubst
+# Maak een nieuwe www.conf
+cat > /usr/local/etc/php-fpm.d/www.conf <<EOF
+[www]
 
-# Vervang daarna de PM_TYPE_PLACEHOLDER
-PM_TYPE_CLEAN=$(echo "${PM_TYPE:-dynamic}" | tr -d ' ')
-sed -i "s/PM_TYPE_PLACEHOLDER/${PM_TYPE_CLEAN}/g" /usr/local/etc/php-fpm.d/www.conf.envsubst
+user = ${USERNAME}
+group = ${USERNAME}
 
-# Vervang de originele config met de bewerkte versie
-mv /usr/local/etc/php-fpm.d/www.conf.envsubst /usr/local/etc/php-fpm.d/www.conf
+listen = /run/php/${CONTAINER_NAME}.sock
+listen.owner = ${USERNAME}
+listen.group = ${USERNAME}
+listen.mode = 0660
 
-# Toon de gegenereerde configuratie voor debugging
-echo "PM_TYPE set to: ${PM_TYPE_CLEAN}"
-echo "FPM user/group settings:"
-grep "^user = " /usr/local/etc/php-fpm.d/www.conf
-grep "^group = " /usr/local/etc/php-fpm.d/www.conf
-echo "FPM listen socket:"
-grep "^listen = " /usr/local/etc/php-fpm.d/www.conf
+pm = ${PM_TYPE:-dynamic}
+pm.max_children = ${PM_MAX_CHILDREN:-20}
+pm.start_servers = ${PM_START_SERVERS:-5}
+pm.min_spare_servers = ${PM_MIN_SPARE_SERVERS:-3}
+pm.max_spare_servers = ${PM_MAX_SPARE_SERVERS:-10}
+pm.max_requests = 500
 
-# Toon welke configuratie is gegenereerd
-echo "Generated PHP configuration files:"
-ls -la /usr/local/etc/php/conf.d/*.ini
+request_terminate_timeout = 60s
 
-# Valideer de FPM configuratie voor we starten
+ping.path = /ping
+ping.response = pong
+
+; Instellingen voor security
+; Prevent zombie processes
+; Emergency restart interval
+; Rlimit files
+
+; Logging
+; Log level
+catch_workers_output = yes
+; Decoreren van output
+
+; Environment variables
+env[PATH] = /usr/local/bin:/usr/bin:/bin
+env[TMP] = /tmp
+env[TMPDIR] = /tmp
+env[TEMP] = /tmp
+
+; Access log
+; access.log = /proc/self/fd/2
+
+; Slow log
+; Slow log
+slowlog = /var/log/php-fpm-slow.log
+request_slowlog_timeout = 10s
+
+; Security: beperk toegang tot bestanden
+security.limit_extensions = .php
+
+EOF
+
+# Toon de gegenereerde config
+echo "=== Generated FPM Config ==="
+cat /usr/local/etc/php-fpm.d/www.conf
+echo "============================"
+
+echo "PM_TYPE set to: ${PM_TYPE:-dynamic}"
+echo "FPM listen socket: /run/php/${CONTAINER_NAME}.sock"
+
+# Valideer de FPM configuratie
 echo "Validating PHP-FPM configuration..."
 php-fpm -t
 if [ $? -ne 0 ]; then
     echo "ERROR: PHP-FPM configuration validation failed!"
-    echo "Check /usr/local/etc/php-fpm.d/www.conf for errors"
-    cat /usr/local/etc/php-fpm.d/www.conf
     exit 1
 fi
 
@@ -94,4 +126,4 @@ fi
 echo "Starting PHP-FPM as user: ${USERNAME}"
 echo "Socket will be created at: /run/php/${CONTAINER_NAME}.sock"
 
-exec "$@" --allow-to-run-as-root
+exec php-fpm --nodaemonize --allow-to-run-as-root
