@@ -8,13 +8,13 @@ if ! command -v envsubst &> /dev/null; then
 fi
 
 # Verplichte environment variabelen check
-if [ -z "${PUID}" ] || [ -z "${PGID}" ] || [ -z "${USERNAME}" ]; then
-    echo "ERROR: PUID, PGID, and USERNAME environment variables are required"
+if [ -z "${PUID}" ] || [ -z "${PGID}" ] || [ -z "${USERNAME}" ] || [ -z "${CONTAINER_NAME}" ]; then
+    echo "ERROR: PUID, PGID, USERNAME, and CONTAINER_NAME environment variables are required"
     echo "Current values:"
     echo "  PUID='${PUID}'"
     echo "  PGID='${PGID}'"
     echo "  USERNAME='${USERNAME}'"
-    echo "Example: PUID=1002 PGID=1002 USERNAME=pim"
+    echo "  CONTAINER_NAME='${CONTAINER_NAME}'"
     exit 1
 fi
 
@@ -26,14 +26,14 @@ if ! id -u "${USERNAME}" > /dev/null 2>&1; then
     usermod -a -G www-data "${USERNAME}"
 else
     echo "User ${USERNAME} already exists with PUID $(id -u ${USERNAME})"
-    # Zorg dat de gebruiker in www-data groep zit
     usermod -a -G www-data "${USERNAME}"
 fi
 
 # Zet juiste eigenaren op directories
 echo "Setting permissions for cache and session directories..."
-chown -R "${USERNAME}":${USERNAME} /var/cache/php-opcache /var/lib/php/sessions
-chmod 755 /var/cache/php-opcache /var/lib/php/sessions
+mkdir -p /var/cache/php-opcache /var/lib/php/sessions /run/php
+chown -R "${USERNAME}":${USERNAME} /var/cache/php-opcache /var/lib/php/sessions /run/php
+chmod 755 /var/cache/php-opcache /var/lib/php/sessions /run/php
 
 # Genereer PHP configuratie uit templates
 echo "Generating PHP configuration from templates..."
@@ -68,13 +68,13 @@ sed -i "s/PM_TYPE_PLACEHOLDER/${PM_TYPE_CLEAN}/g" /usr/local/etc/php-fpm.d/www.c
 # Vervang de originele config met de bewerkte versie
 mv /usr/local/etc/php-fpm.d/www.conf.envsubst /usr/local/etc/php-fpm.d/www.conf
 
-# Toon de gegenereerde PM_TYPE waarde voor debugging
+# Toon de gegenereerde configuratie voor debugging
 echo "PM_TYPE set to: ${PM_TYPE_CLEAN}"
-
-# Toon welke user/group er in de FPM config staat (debugging)
 echo "FPM user/group settings:"
 grep "^user = " /usr/local/etc/php-fpm.d/www.conf
 grep "^group = " /usr/local/etc/php-fpm.d/www.conf
+echo "FPM listen socket:"
+grep "^listen = " /usr/local/etc/php-fpm.d/www.conf
 
 # Toon welke configuratie is gegenereerd
 echo "Generated PHP configuration files:"
@@ -90,10 +90,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Start PHP-FPM als de juiste gebruiker (master process ook als USERNAME)
+# Start PHP-FPM
 echo "Starting PHP-FPM as user: ${USERNAME}"
+echo "Socket will be created at: /run/php/${CONTAINER_NAME}.sock"
 
-# Gebruik sudo of runuser om als specifieke gebruiker te starten
-# We doen dit door de user/group al in de config te hebben gezet
-# en dan --allow-to-run-as-root te gebruiken zodat FPM zelf switcht
 exec "$@" --allow-to-run-as-root

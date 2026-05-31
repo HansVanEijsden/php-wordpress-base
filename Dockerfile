@@ -17,9 +17,12 @@ RUN apt-get update && apt-get install -y \
     libmagickwand-dev \
     libzip-dev \
     libicu-dev \
+    libxml2-dev \
     msmtp \
     msmtp-mta \
     gettext \
+    default-mysql-client \
+    fcgiwrap \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
         mysqli \
@@ -29,6 +32,7 @@ RUN apt-get update && apt-get install -y \
         intl \
         zip \
         bcmath \
+        soap \
     && pecl install igbinary \
     && pecl install --configureoptions 'with-igbinary="yes"' apcu \
     && pecl install imagick \
@@ -83,23 +87,29 @@ RUN { \
         echo 'sendmail_path = /usr/bin/msmtp -t'; \
     } > /usr/local/etc/php/conf.d/mail.template
 
-# --- Stap 3: Bereid FPM pool configuratie voor (met placeholders voor user/group) ---
+# --- Stap 3: Bereid FPM pool configuratie voor (met socket ipv TCP) ---
 RUN cp /usr/local/etc/php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^user = .*/user = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
-    sed -i 's/^group = .*/group = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^listen = .*/listen = \/run\/php\/${CONTAINER_NAME}.sock/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^listen.owner = .*/listen.owner = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^listen.group = .*/listen.group = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^listen.mode = .*/listen.mode = 0660/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^user = .*/user = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
+    sed -i 's/^group = .*/group = ${USERNAME}/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^pm.max_children = .*/pm.max_children = ${PM_MAX_CHILDREN}/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^pm.start_servers = .*/pm.start_servers = ${PM_START_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^pm.min_spare_servers = .*/pm.min_spare_servers = ${PM_MIN_SPARE_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^pm.max_spare_servers = .*/pm.max_spare_servers = ${PM_MAX_SPARE_SERVERS}/' /usr/local/etc/php-fpm.d/www.conf.template && \
     sed -i 's/^pm = .*/pm = PM_TYPE_PLACEHOLDER/' /usr/local/etc/php-fpm.d/www.conf.template && \
     echo "pm.max_requests = 500" >> /usr/local/etc/php-fpm.d/www.conf.template && \
-    echo "request_terminate_timeout = 60s" >> /usr/local/etc/php-fpm.d/www.conf.template
+    echo "request_terminate_timeout = 60s" >> /usr/local/etc/php-fpm.d/www.conf.template && \
+    echo "ping.path = /ping" >> /usr/local/etc/php-fpm.d/www.conf.template && \
+    echo "ping.response = pong" >> /usr/local/etc/php-fpm.d/www.conf.template
 
 # Verwijder origineel en gebruik template
 RUN rm /usr/local/etc/php-fpm.d/www.conf && \
-    mv /usr/local/etc/php-fpm.d/www.conf.template /usr/local/etc/php-fpm.d/www.conf
+    mv /usr/local/etc/php-fpm.d/www.conf.template /usr/local/etc/php-fpm.d/www.conf && \
+    mkdir -p /run/php && \
+    chmod 755 /run/php
 
 # --- Stap 4: Maak directories en voeg entrypoint toe ---
 RUN mkdir -p /var/cache/php-opcache /var/lib/php/sessions && \
