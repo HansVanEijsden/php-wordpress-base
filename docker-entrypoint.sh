@@ -59,12 +59,12 @@ EOF
 POOL_NAME="${VOLUME_PREFIX:-${CONTAINER_NAME}}"
 echo "Configuring PHP-FPM pool: ${POOL_NAME}"
 
-# Pas bestaande Docker configuraties aan naar de juiste pool naam
+# Pas bestaande configuraties aan naar de juiste pool naam
 sed -i "s/\[www\]/[${POOL_NAME}]/g" /usr/local/etc/php-fpm.d/docker.conf
 sed -i "s/\[www\]/[${POOL_NAME}]/g" /usr/local/etc/php-fpm.d/zz-docker.conf
 
-# Voeg onze eigen configuratie toe (zzz-www.conf wordt als laatste geladen)
-cat > /usr/local/etc/php-fpm.d/zzz-www.conf <<EOF
+# Overschrijf www.conf met volledige configuratie
+cat > /usr/local/etc/php-fpm.d/www.conf <<EOF
 [${POOL_NAME}]
 
 user = ${USERNAME}
@@ -83,6 +83,7 @@ pm.max_spare_servers = ${PM_MAX_SPARE_SERVERS:-10}
 pm.max_requests = 500
 
 request_terminate_timeout = 60s
+catch_workers_output = yes
 
 ping.path = /ping
 ping.response = pong
@@ -104,9 +105,6 @@ echo "Validating PHP-FPM configuration..."
 php-fpm -t
 if [ $? -ne 0 ]; then
     echo "ERROR: PHP-FPM configuration validation failed!"
-    # Toon welke configuraties er zijn voor debugging
-    echo "Existing FPM configs:"
-    ls -la /usr/local/etc/php-fpm.d/
     exit 1
 fi
 
