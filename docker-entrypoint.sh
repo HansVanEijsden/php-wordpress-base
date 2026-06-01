@@ -56,9 +56,11 @@ tls off
 syslog LOG_MAIL
 EOF
 
-# PHP-FPM configuratie
-cat > /usr/local/etc/php-fpm.d/www.conf <<EOF
-[www]
+# PHP-FPM configuratie met dynamische pool naam
+echo "Generating PHP-FPM configuration for pool: ${VOLUME_PREFIX}"
+
+cat > /tmp/www.conf.template <<'TEMPLATE'
+[${VOLUME_PREFIX}]
 
 user = ${USERNAME}
 group = ${USERNAME}
@@ -87,7 +89,13 @@ env[PATH] = /usr/local/bin:/usr/bin:/bin
 env[TMP] = /tmp
 env[TMPDIR] = /tmp
 env[TEMP] = /tmp
-EOF
+TEMPLATE
+
+envsubst < /tmp/www.conf.template > /usr/local/etc/php-fpm.d/www.conf
+rm /tmp/www.conf.template
+
+# Debug: toon gegenereerde pool naam
+echo "PHP-FPM pool: $(grep "^\[" /usr/local/etc/php-fpm.d/www.conf)"
 
 # Validatie
 echo "Validating PHP-FPM configuration..."
