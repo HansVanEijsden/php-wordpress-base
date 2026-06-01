@@ -37,9 +37,8 @@ envsubst < /usr/local/etc/php/conf.d/opcache.template > /usr/local/etc/php/conf.
 envsubst < /usr/local/etc/php/conf.d/session.template > /usr/local/etc/php/conf.d/session.ini
 envsubst < /usr/local/etc/php/conf.d/mail.template > /usr/local/etc/php/conf.d/mail.ini
 
-# MySQL socket configuratie (zodat 'localhost' werkt)
+# MySQL socket configuratie
 cat > /usr/local/etc/php/conf.d/mysql-socket.ini <<EOF
-; Default MySQL socket pad voor WordPress
 mysql.default_socket = /run/mysqld/mysqld.sock
 mysqli.default_socket = /run/mysqld/mysqld.sock
 pdo_mysql.default_socket = /run/mysqld/mysqld.sock
@@ -56,11 +55,17 @@ tls off
 syslog LOG_MAIL
 EOF
 
-# PHP-FPM configuratie met dynamische pool naam
-echo "Generating PHP-FPM configuration for pool: ${VOLUME_PREFIX}"
+# Pool naam bepalen
+POOL_NAME="${VOLUME_PREFIX:-${CONTAINER_NAME}}"
+echo "Configuring PHP-FPM pool: ${POOL_NAME}"
 
-cat > /tmp/www.conf.template <<'TEMPLATE'
-[${VOLUME_PREFIX}]
+# Pas bestaande Docker configuraties aan naar de juiste pool naam
+sed -i "s/\[www\]/[${POOL_NAME}]/g" /usr/local/etc/php-fpm.d/docker.conf
+sed -i "s/\[www\]/[${POOL_NAME}]/g" /usr/local/etc/php-fpm.d/zz-docker.conf
+
+# Voeg onze eigen configuratie toe (zzz-www.conf wordt als laatste geladen)
+cat > /usr/local/etc/php-fpm.d/zzz-www.conf <<EOF
+[${POOL_NAME}]
 
 user = ${USERNAME}
 group = ${USERNAME}
@@ -78,7 +83,6 @@ pm.max_spare_servers = ${PM_MAX_SPARE_SERVERS:-10}
 pm.max_requests = 500
 
 request_terminate_timeout = 60s
-catch_workers_output = yes
 
 ping.path = /ping
 ping.response = pong
@@ -89,24 +93,23 @@ env[PATH] = /usr/local/bin:/usr/bin:/bin
 env[TMP] = /tmp
 env[TMPDIR] = /tmp
 env[TEMP] = /tmp
-TEMPLATE
+EOF
 
-envsubst < /tmp/www.conf.template > /usr/local/etc/php-fpm.d/www.conf
-rm /tmp/www.conf.template
-
-# Debug: toon gegenereerde pool naam
-echo "PHP-FPM pool: $(grep "^\[" /usr/local/etc/php-fpm.d/www.conf)"
+# Debug info
+echo "PHP-FPM pool: ${POOL_NAME}"
+echo "Socket: /run/php/${CONTAINER_NAME}.sock"
 
 # Validatie
 echo "Validating PHP-FPM configuration..."
 php-fpm -t
 if [ $? -ne 0 ]; then
     echo "ERROR: PHP-FPM configuration validation failed!"
+    # Toon welke configuraties er zijn voor debugging
+    echo "Existing FPM configs:"
+    ls -la /usr/local/etc/php-fpm.d/
     exit 1
 fi
 
 # Start PHP-FPM
 echo "Starting PHP-FPM as user: ${USERNAME}"
-echo "Socket: /run/php/${CONTAINER_NAME}.sock"
-echo "MySQL socket: /run/mysqld/mysqld.sock"
 exec php-fpm --nodaemonize --allow-to-run-as-root
