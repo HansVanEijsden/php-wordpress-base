@@ -48,7 +48,7 @@ RUN { \
         echo 'max_execution_time = ${PHP_MAX_EXECUTION_TIME}'; \
         echo 'max_input_vars = ${PHP_MAX_INPUT_VARS}'; \
         echo 'expose_php = Off'; \
-        echo 'disable_functions = exec,passthru,shell_exec,system,proc_open,popen,parse_ini_file,show_source'; \
+        echo 'disable_functions = exec,passthru,shell_exec,system,popen,parse_ini_file,show_source'; \
     } > /usr/local/etc/php/conf.d/wordpress.template
 
 RUN { \
