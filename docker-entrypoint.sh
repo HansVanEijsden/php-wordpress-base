@@ -108,6 +108,27 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# --- Status scripts voor monitoring ---
+if [ "${ENABLE_STATUS_ENDPOINTS:-true}" = "true" ]; then
+    echo "Creating status endpoints..."
+    cat > /tmp/opcache-status.php <<'EOF'
+<?php
+header('Content-Type: application/json');
+echo json_encode(opcache_get_status(false));
+EOF
+    
+    cat > /tmp/apcu-status.php <<'EOF'
+<?php
+header('Content-Type: application/json');
+echo json_encode(apcu_sma_info(true));
+EOF
+    
+    chmod 644 /tmp/opcache-status.php /tmp/apcu-status.php
+    echo "Status endpoints created in /tmp/"
+else
+    echo "Status endpoints disabled"
+fi
+
 # Start PHP-FPM
 echo "Starting PHP-FPM as user: ${USERNAME}"
 exec php-fpm --nodaemonize --allow-to-run-as-root
