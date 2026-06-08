@@ -25,9 +25,9 @@ else
 fi
 
 # Directories voorbereiden
-mkdir -p /var/cache/php-opcache /var/lib/php/sessions /run/php
-chown -R "${USERNAME}":${USERNAME} /var/cache/php-opcache /var/lib/php/sessions /run/php
-chmod 755 /var/cache/php-opcache /var/lib/php/sessions /run/php
+mkdir -p /var/cache/php-opcache /var/lib/php/sessions /run/php /var/log/php
+chown -R "${USERNAME}":${USERNAME} /var/cache/php-opcache /var/lib/php/sessions /run/php /var/log/php
+chmod 755 /var/cache/php-opcache /var/lib/php/sessions /run/php /var/log/php
 
 # PHP configuratie genereren
 echo "Generating PHP configuration..."
@@ -90,6 +90,15 @@ ping.response = pong
 
 security.limit_extensions = .php
 
+; Error logging - using CONTAINER_NAME for unique log files per container
+php_admin_value[error_log] = /var/log/php/${CONTAINER_NAME}-error.log
+php_admin_flag[log_errors] = on
+php_admin_value[log_errors_max_len] = 0
+
+; Slow request logging
+request_slowlog_timeout = 10s
+slowlog = /var/log/php/${CONTAINER_NAME}-slow.log
+
 env[PATH] = /usr/local/bin:/usr/bin:/bin
 env[TMP] = /tmp
 env[TMPDIR] = /tmp
@@ -99,6 +108,8 @@ EOF
 # Debug info
 echo "PHP-FPM pool: ${POOL_NAME}"
 echo "Socket: /run/php/${CONTAINER_NAME}.sock"
+echo "Error log: /var/log/php/${CONTAINER_NAME}-error.log"
+echo "Slow log: /var/log/php/${CONTAINER_NAME}-slow.log"
 
 # Validatie
 echo "Validating PHP-FPM configuration..."
@@ -108,7 +119,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# --- Status scripts voor monitoring ---
+# Status scripts voor monitoring (optioneel)
 if [ "${ENABLE_STATUS_ENDPOINTS:-true}" = "true" ]; then
     echo "Creating status endpoints..."
     cat > /tmp/opcache-status.php <<'EOF'
