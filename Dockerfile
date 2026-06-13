@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     libicu-dev \
     libxml2-dev \
+    libssl-dev \
     msmtp \
     msmtp-mta \
     gettext \
@@ -36,7 +37,8 @@ RUN apt-get update && apt-get install -y \
     && pecl install igbinary \
     && pecl install --configureoptions 'with-igbinary="yes"' apcu \
     && pecl install imagick \
-    && docker-php-ext-enable igbinary apcu imagick \
+    && pecl install redis \
+    && docker-php-ext-enable igbinary apcu imagick redis \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # --- Stap 2: PHP configuratie templates ---
