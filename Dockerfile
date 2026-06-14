@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y \
     && pecl install igbinary \
     && pecl install --configureoptions 'with-igbinary="yes"' apcu \
     && pecl install imagick \
-    && pecl install --configureoptions 'enable-redis-igbinary="yes"'redis \
+    && pecl install --configureoptions 'enable-redis-igbinary="yes"' redis \
     && docker-php-ext-enable igbinary apcu imagick redis \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
