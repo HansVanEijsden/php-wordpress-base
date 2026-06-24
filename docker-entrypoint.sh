@@ -111,6 +111,9 @@ echo "Socket: /run/php/${CONTAINER_NAME}.sock"
 echo "Error log: /var/log/php/${CONTAINER_NAME}-error.log"
 echo "Slow log: /var/log/php/${CONTAINER_NAME}-slow.log"
 
+# Toon OPcache revalidate frequentie
+echo "OPcache revalidate_freq: ${OPCACHE_REVALIDATE_FREQ:-30} seconds"
+
 # Validatie
 echo "Validating PHP-FPM configuration..."
 php-fpm -t

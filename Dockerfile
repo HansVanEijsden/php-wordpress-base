@@ -59,14 +59,15 @@ RUN { \
         echo 'apc.serializer = igbinary'; \
     } > /usr/local/etc/php/conf.d/apcu.template
 
+# OPcache template met standaard 30 seconden en environment variable
 RUN { \
         echo 'opcache.enable = 1'; \
         echo 'opcache.enable_cli = 1'; \
         echo 'opcache.memory_consumption = ${OPCACHE_MEMORY_CONSUMPTION}'; \
         echo 'opcache.interned_strings_buffer = ${OPCACHE_INTERNED_STRINGS_BUFFER}'; \
         echo 'opcache.max_accelerated_files = ${OPCACHE_MAX_ACCELERATED_FILES}'; \
-        echo 'opcache.revalidate_freq = 2'; \
-        echo 'opcache.validate_timestamps = 1'; \
+        echo 'opcache.revalidate_freq = ${OPCACHE_REVALIDATE_FREQ:-30}'; \
+        echo 'opcache.validate_timestamps = ${OPCACHE_VALIDATE_TIMESTAMPS:-1}'; \
         echo 'opcache.file_cache = /var/cache/php-opcache'; \
         echo 'opcache.file_cache_only = 0'; \
     } > /usr/local/etc/php/conf.d/opcache.template
