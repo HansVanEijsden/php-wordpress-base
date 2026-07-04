@@ -13,6 +13,33 @@ if [ -z "${PUID}" ] || [ -z "${PGID}" ] || [ -z "${USERNAME}" ] || [ -z "${CONTA
     exit 1
 fi
 
+# Check of essentiële PHP configuratie variabelen bestaan
+REQUIRED_VARS=(
+    "TIMEZONE"
+    "PHP_MEMORY_LIMIT"
+    "PHP_UPLOAD_MAX_FILESIZE"
+    "PHP_POST_MAX_SIZE"
+    "PHP_MAX_EXECUTION_TIME"
+    "PHP_MAX_INPUT_VARS"
+    "APC_SHM_SIZE"
+    "OPCACHE_MEMORY_CONSUMPTION"
+    "OPCACHE_INTERNED_STRINGS_BUFFER"
+    "OPCACHE_MAX_ACCELERATED_FILES"
+    "SESSION_SAVE_PATH"
+)
+
+MISSING_VARS=()
+for var in "${REQUIRED_VARS[@]}"; do
+    if [ -z "${!var}" ]; then
+        MISSING_VARS+=("$var")
+    fi
+done
+
+if [ ${#MISSING_VARS[@]} -gt 0 ]; then
+    echo "WARNING: The following required variables are not set, using empty values in config:"
+    printf '  - %s\n' "${MISSING_VARS[@]}"
+fi
+
 # Gebruiker aanmaken
 if ! id -u "${USERNAME}" > /dev/null 2>&1; then
     echo "Creating user ${USERNAME} with PUID: ${PUID}, PGID: ${PGID}"
@@ -25,9 +52,9 @@ else
 fi
 
 # Directories voorbereiden
-mkdir -p /var/cache/php-opcache /var/lib/php/sessions /run/php /var/log/php
-chown -R "${USERNAME}":${USERNAME} /var/cache/php-opcache /var/lib/php/sessions /run/php /var/log/php
-chmod 755 /var/cache/php-opcache /var/lib/php/sessions /run/php /var/log/php
+mkdir -p /var/log/php /var/cache/php-opcache /var/lib/php/sessions /run/php
+chown -R "${USERNAME}":${USERNAME} /var/log/php /var/cache/php-opcache /var/lib/php/sessions /run/php
+chmod 755 /var/log/php /var/cache/php-opcache /var/lib/php/sessions /run/php
 
 # PHP configuratie genereren
 echo "Generating PHP configuration..."
@@ -44,16 +71,9 @@ mysqli.default_socket = /run/mysqld/mysqld.sock
 pdo_mysql.default_socket = /run/mysqld/mysqld.sock
 EOF
 
-# msmtp configuratie
-cat > /etc/msmtprc <<EOF
-account default
-host ${SMTP_HOST:-127.0.0.1}
-port ${SMTP_PORT:-25}
-from ${SMTP_FROM:-localhost}
-auth off
-tls off
-syslog LOG_MAIL
-EOF
+# msmtp configuratie genereren
+echo "Generating msmtp configuration..."
+envsubst < /etc/msmtp.template > /etc/msmtprc
 
 # Pool naam bepalen
 POOL_NAME="${VOLUME_PREFIX:-${CONTAINER_NAME}}"
@@ -80,7 +100,7 @@ pm.max_children = ${PM_MAX_CHILDREN:-20}
 pm.start_servers = ${PM_START_SERVERS:-5}
 pm.min_spare_servers = ${PM_MIN_SPARE_SERVERS:-3}
 pm.max_spare_servers = ${PM_MAX_SPARE_SERVERS:-10}
-pm.max_requests = 500
+pm.max_requests = ${PM_MAX_REQUESTS:-500}
 
 request_terminate_timeout = 60s
 catch_workers_output = yes

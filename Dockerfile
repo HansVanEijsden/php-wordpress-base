@@ -1,5 +1,5 @@
 # Gebruik officiële PHP 8.5 FPM met Debian 13 (Trixie) basis
-FROM php:8.5-fpm
+FROM php:8.5.8-fpm
 
 # Build metadata voor GitHub Container Registry
 ARG BUILD_DATE
@@ -34,11 +34,12 @@ RUN apt-get update && apt-get install -y \
         zip \
         bcmath \
         soap \
-    && pecl install igbinary \
-    && pecl install --configureoptions 'with-igbinary="yes"' apcu \
-    && pecl install imagick \
-    && pecl install --configureoptions 'enable-redis-igbinary="yes"' redis \
+    && pecl install --no-interaction igbinary \
+    && pecl install --no-interaction --configureoptions 'with-igbinary="yes"' apcu \
+    && pecl install --no-interaction imagick \
+    && pecl install --no-interaction --configureoptions 'enable-redis-igbinary="yes"' redis \
     && docker-php-ext-enable igbinary apcu imagick redis \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # --- Stap 2: PHP configuratie templates ---
@@ -85,11 +86,22 @@ RUN { \
         echo 'sendmail_path = /usr/bin/msmtp -t'; \
     } > /usr/local/etc/php/conf.d/mail.template
 
-# --- Stap 3: Directories voor cache en sessions ---
-RUN mkdir -p /var/cache/php-opcache /var/lib/php/sessions /run/php && \
-    chmod 755 /var/cache/php-opcache /var/lib/php/sessions /run/php
+# --- Stap 3: msmtp configuratie template ---
+RUN { \
+        echo 'account default'; \
+        echo 'host ${SMTP_HOST:-127.0.0.1}'; \
+        echo 'port ${SMTP_PORT:-25}'; \
+        echo 'from ${SMTP_FROM:-localhost}'; \
+        echo 'auth off'; \
+        echo 'tls off'; \
+        echo 'syslog LOG_MAIL'; \
+    } > /etc/msmtp.template
 
-# --- Stap 4: Entrypoint script ---
+# --- Stap 4: Directories voor cache, sessions en logs ---
+RUN mkdir -p /var/log/php /var/cache/php-opcache /var/lib/php/sessions /run/php && \
+    chmod 755 /var/cache/php-opcache /var/lib/php/sessions /run/php /var/log/php
+
+# --- Stap 5: Entrypoint script ---
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
