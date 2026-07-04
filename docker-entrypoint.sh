@@ -71,6 +71,11 @@ mysqli.default_socket = /run/mysqld/mysqld.sock
 pdo_mysql.default_socket = /run/mysqld/mysqld.sock
 EOF
 
+# Standaardwaarden mailconfiguratie wanneer niet ingegeven
+SMTP_HOST="${SMTP_HOST:-127.0.0.1}"
+SMTP_PORT="${SMTP_PORT:-25}"
+SMTP_FROM="${SMTP_FROM:-localhost}"
+
 # msmtp configuratie genereren
 echo "Generating msmtp configuration..."
 envsubst < /etc/msmtp.template > /etc/msmtprc
