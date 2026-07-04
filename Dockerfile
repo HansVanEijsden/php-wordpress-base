@@ -56,21 +56,21 @@ RUN { \
 
 RUN { \
         echo 'apc.enabled = 1'; \
-        echo 'apc.shm_size = ${APC_SHM_SIZE}'; \
+        echo 'apc.shm_size = ${APC_SHM_SIZE:-16M}'; \
         echo 'apc.serializer = igbinary'; \
+        echo 'apc.slam_defense = 1'; \
     } > /usr/local/etc/php/conf.d/apcu.template
 
 # OPcache template met standaard 30 seconden en environment variable
 RUN { \
         echo 'opcache.enable = 1'; \
-        echo 'opcache.enable_cli = 1'; \
-        echo 'opcache.memory_consumption = ${OPCACHE_MEMORY_CONSUMPTION}'; \
-        echo 'opcache.interned_strings_buffer = ${OPCACHE_INTERNED_STRINGS_BUFFER}'; \
-        echo 'opcache.max_accelerated_files = ${OPCACHE_MAX_ACCELERATED_FILES}'; \
+        echo 'opcache.enable_cli = 0'; \
+        echo 'opcache.memory_consumption = ${OPCACHE_MEMORY_CONSUMPTION:-192}'; \
+        echo 'opcache.interned_strings_buffer = ${OPCACHE_INTERNED_STRINGS_BUFFER:-32}'; \
+        echo 'opcache.max_accelerated_files = ${OPCACHE_MAX_ACCELERATED_FILES:-10000}'; \
         echo 'opcache.revalidate_freq = ${OPCACHE_REVALIDATE_FREQ:-30}'; \
         echo 'opcache.validate_timestamps = ${OPCACHE_VALIDATE_TIMESTAMPS:-1}'; \
         echo 'opcache.file_cache = /var/cache/php-opcache'; \
-        echo 'opcache.file_cache_only = 0'; \
     } > /usr/local/etc/php/conf.d/opcache.template
 
 RUN { \

@@ -102,7 +102,7 @@ pm.min_spare_servers = ${PM_MIN_SPARE_SERVERS:-3}
 pm.max_spare_servers = ${PM_MAX_SPARE_SERVERS:-10}
 pm.max_requests = ${PM_MAX_REQUESTS:-500}
 
-request_terminate_timeout = 60s
+request_terminate_timeout = ${REQUEST_TERMINATE_TIMEOUT:-60s}
 catch_workers_output = yes
 
 ping.path = /ping
@@ -115,10 +115,6 @@ php_admin_value[error_log] = /var/log/php/${CONTAINER_NAME}-error.log
 php_admin_flag[log_errors] = on
 php_admin_flag[display_errors] = off
 
-; Slow request logging
-request_slowlog_timeout = 10s
-slowlog = /var/log/php/${CONTAINER_NAME}-slow.log
-
 env[PATH] = /usr/local/bin:/usr/bin:/bin
 env[TMP] = /tmp
 env[TMPDIR] = /tmp
@@ -129,7 +125,6 @@ EOF
 echo "PHP-FPM pool: ${POOL_NAME}"
 echo "Socket: /run/php/${CONTAINER_NAME}.sock"
 echo "Error log: /var/log/php/${CONTAINER_NAME}-error.log"
-echo "Slow log: /var/log/php/${CONTAINER_NAME}-slow.log"
 
 # Toon OPcache revalidate frequentie
 echo "OPcache revalidate_freq: ${OPCACHE_REVALIDATE_FREQ:-30} seconds"
