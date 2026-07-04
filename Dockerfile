@@ -34,10 +34,10 @@ RUN apt-get update && apt-get install -y \
         zip \
         bcmath \
         soap \
-    && pecl install --no-interaction igbinary \
-    && pecl install --no-interaction --configureoptions 'with-igbinary="yes"' apcu \
-    && pecl install --no-interaction imagick \
-    && pecl install --no-interaction --configureoptions 'enable-redis-igbinary="yes"' redis \
+    && pecl install igbinary \
+    && pecl install --configureoptions 'with-igbinary="yes"' apcu \
+    && pecl install imagick \
+    && pecl install --configureoptions 'enable-redis-igbinary="yes"' redis \
     && docker-php-ext-enable igbinary apcu imagick redis \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
