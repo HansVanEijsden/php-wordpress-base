@@ -1,46 +1,37 @@
 #!/bin/bash
 set -e
 
-# Controleer of envsubst beschikbaar is
+# Check that envsubst is available
 if ! command -v envsubst &> /dev/null; then
     echo "ERROR: envsubst command not found. Please install gettext package."
     exit 1
 fi
 
-# Verplichte environment variabelen check
+# Check required environment variables
 if [ -z "${PUID}" ] || [ -z "${PGID}" ] || [ -z "${USERNAME}" ] || [ -z "${CONTAINER_NAME}" ]; then
     echo "ERROR: PUID, PGID, USERNAME, and CONTAINER_NAME are required"
     exit 1
 fi
 
-# Check of essentiële PHP configuratie variabelen bestaan
-REQUIRED_VARS=(
-    "TIMEZONE"
-    "PHP_MEMORY_LIMIT"
-    "PHP_UPLOAD_MAX_FILESIZE"
-    "PHP_POST_MAX_SIZE"
-    "PHP_MAX_EXECUTION_TIME"
-    "PHP_MAX_INPUT_VARS"
-    "APC_SHM_SIZE"
-    "OPCACHE_MEMORY_CONSUMPTION"
-    "OPCACHE_INTERNED_STRINGS_BUFFER"
-    "OPCACHE_MAX_ACCELERATED_FILES"
-    "SESSION_SAVE_PATH"
-)
+# Apply defaults for the PHP configuration variables.
+# Note: envsubst cannot handle `${VAR:-default}` (it leaves the literal string in
+# the generated .ini) and only sees EXPORTED variables. So defaults are set here
+# with `export`, before envsubst runs.
+export TIMEZONE="${TIMEZONE:-Europe/Amsterdam}"
+export PHP_MEMORY_LIMIT="${PHP_MEMORY_LIMIT:-256M}"
+export PHP_UPLOAD_MAX_FILESIZE="${PHP_UPLOAD_MAX_FILESIZE:-64M}"
+export PHP_POST_MAX_SIZE="${PHP_POST_MAX_SIZE:-64M}"
+export PHP_MAX_EXECUTION_TIME="${PHP_MAX_EXECUTION_TIME:-300}"
+export PHP_MAX_INPUT_VARS="${PHP_MAX_INPUT_VARS:-4000}"
+export APC_SHM_SIZE="${APC_SHM_SIZE:-16M}"
+export OPCACHE_MEMORY_CONSUMPTION="${OPCACHE_MEMORY_CONSUMPTION:-192}"
+export OPCACHE_INTERNED_STRINGS_BUFFER="${OPCACHE_INTERNED_STRINGS_BUFFER:-32}"
+export OPCACHE_MAX_ACCELERATED_FILES="${OPCACHE_MAX_ACCELERATED_FILES:-10000}"
+export OPCACHE_REVALIDATE_FREQ="${OPCACHE_REVALIDATE_FREQ:-30}"
+export OPCACHE_VALIDATE_TIMESTAMPS="${OPCACHE_VALIDATE_TIMESTAMPS:-1}"
+export SESSION_SAVE_PATH="${SESSION_SAVE_PATH:-/var/lib/php/sessions}"
 
-MISSING_VARS=()
-for var in "${REQUIRED_VARS[@]}"; do
-    if [ -z "${!var}" ]; then
-        MISSING_VARS+=("$var")
-    fi
-done
-
-if [ ${#MISSING_VARS[@]} -gt 0 ]; then
-    echo "WARNING: The following required variables are not set, using empty values in config:"
-    printf '  - %s\n' "${MISSING_VARS[@]}"
-fi
-
-# Gebruiker aanmaken
+# Create the user
 if ! id -u "${USERNAME}" > /dev/null 2>&1; then
     echo "Creating user ${USERNAME} with PUID: ${PUID}, PGID: ${PGID}"
     groupadd -g "${PGID}" "${USERNAME}"
@@ -51,12 +42,12 @@ else
     usermod -a -G www-data "${USERNAME}"
 fi
 
-# Directories voorbereiden
+# Prepare directories
 mkdir -p /var/log/php /var/cache/php-opcache /var/lib/php/sessions /run/php
 chown -R "${USERNAME}":${USERNAME} /var/log/php /var/cache/php-opcache /var/lib/php/sessions /run/php
 chmod 755 /var/log/php /var/cache/php-opcache /var/lib/php/sessions /run/php
 
-# PHP configuratie genereren
+# Generate PHP configuration
 echo "Generating PHP configuration..."
 envsubst < /usr/local/etc/php/conf.d/wordpress.template > /usr/local/etc/php/conf.d/wordpress.ini
 envsubst < /usr/local/etc/php/conf.d/apcu.template > /usr/local/etc/php/conf.d/apcu.ini
@@ -64,31 +55,32 @@ envsubst < /usr/local/etc/php/conf.d/opcache.template > /usr/local/etc/php/conf.
 envsubst < /usr/local/etc/php/conf.d/session.template > /usr/local/etc/php/conf.d/session.ini
 envsubst < /usr/local/etc/php/conf.d/mail.template > /usr/local/etc/php/conf.d/mail.ini
 
-# MySQL socket configuratie
+# MySQL socket configuration
 cat > /usr/local/etc/php/conf.d/mysql-socket.ini <<EOF
 mysql.default_socket = /run/mysqld/mysqld.sock
 mysqli.default_socket = /run/mysqld/mysqld.sock
 pdo_mysql.default_socket = /run/mysqld/mysqld.sock
 EOF
 
-# Standaardwaarden mailconfiguratie wanneer niet ingegeven
-SMTP_HOST="${SMTP_HOST:-127.0.0.1}"
-SMTP_PORT="${SMTP_PORT:-25}"
-SMTP_FROM="${SMTP_FROM:-localhost}"
+# Default mail configuration when not provided
+# (export required: envsubst only sees exported variables)
+export SMTP_HOST="${SMTP_HOST:-127.0.0.1}"
+export SMTP_PORT="${SMTP_PORT:-25}"
+export SMTP_FROM="${SMTP_FROM:-localhost}"
 
-# msmtp configuratie genereren
+# Generate msmtp configuration
 echo "Generating msmtp configuration..."
 envsubst < /etc/msmtp.template > /etc/msmtprc
 
-# Pool naam bepalen
+# Determine the pool name
 POOL_NAME="${VOLUME_PREFIX:-${CONTAINER_NAME}}"
 echo "Configuring PHP-FPM pool: ${POOL_NAME}"
 
-# Pas bestaande configuraties aan naar de juiste pool naam
+# Rename the pool in the existing configuration files
 sed -i "s/\[www\]/[${POOL_NAME}]/g" /usr/local/etc/php-fpm.d/docker.conf
 sed -i "s/\[www\]/[${POOL_NAME}]/g" /usr/local/etc/php-fpm.d/zz-docker.conf
 
-# Overschrijf www.conf met volledige configuratie
+# Overwrite www.conf with the full configuration
 cat > /usr/local/etc/php-fpm.d/www.conf <<EOF
 [${POOL_NAME}]
 
@@ -126,15 +118,15 @@ env[TMPDIR] = /tmp
 env[TEMP] = /tmp
 EOF
 
-# Debug info
+# Debug output
 echo "PHP-FPM pool: ${POOL_NAME}"
 echo "Socket: /run/php/${CONTAINER_NAME}.sock"
 echo "Error log: /var/log/php/${CONTAINER_NAME}-error.log"
 
-# Toon OPcache revalidate frequentie
+# Show OPcache revalidate frequency
 echo "OPcache revalidate_freq: ${OPCACHE_REVALIDATE_FREQ:-30} seconds"
 
-# Validatie
+# Validation
 echo "Validating PHP-FPM configuration..."
 php-fpm -t
 if [ $? -ne 0 ]; then
@@ -142,7 +134,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Status scripts voor monitoring (optioneel)
+# Status scripts for monitoring (optional)
 if [ "${ENABLE_STATUS_ENDPOINTS:-true}" = "true" ]; then
     echo "Creating status endpoints..."
     cat > /tmp/opcache-status.php <<'EOF'

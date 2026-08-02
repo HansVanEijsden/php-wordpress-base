@@ -1,7 +1,7 @@
-# Gebruik officiële PHP 8.5 FPM met Debian 13 (Trixie) basis
+# Use the official PHP 8.5 FPM image on Debian 13 (Trixie)
 FROM php:8.5.8-fpm
 
-# Build metadata voor GitHub Container Registry
+# Build metadata for GitHub Container Registry
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION
@@ -12,7 +12,7 @@ LABEL org.opencontainers.image.created=$BUILD_DATE \
     org.opencontainers.image.revision=$VCS_REF \
     org.opencontainers.image.source="https://github.com/hansvaneijsden/php-wordpress-base"
 
-# --- Stap 1: Systeem dependencies ---
+# --- Step 1: System dependencies ---
 RUN apt-get update && apt-get install -y \
     libmagickwand-dev \
     libzip-dev \
@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# --- Stap 2: PHP configuratie templates ---
+# --- Step 2: PHP configuration templates ---
 RUN { \
     echo 'date.timezone = ${TIMEZONE}'; \
     echo 'memory_limit = ${PHP_MEMORY_LIMIT}'; \
@@ -56,20 +56,20 @@ RUN { \
 
 RUN { \
     echo 'apc.enabled = 1'; \
-    echo 'apc.shm_size = ${APC_SHM_SIZE:-16M}'; \
+    echo 'apc.shm_size = ${APC_SHM_SIZE}'; \
     echo 'apc.serializer = igbinary'; \
     echo 'apc.slam_defense = 1'; \
     } > /usr/local/etc/php/conf.d/apcu.template
 
-# OPcache template met standaard 30 seconden en environment variable
+# OPcache template (defaults are applied in docker-entrypoint.sh before envsubst)
 RUN { \
     echo 'opcache.enable = 1'; \
     echo 'opcache.enable_cli = 0'; \
-    echo 'opcache.memory_consumption = ${OPCACHE_MEMORY_CONSUMPTION:-192}'; \
-    echo 'opcache.interned_strings_buffer = ${OPCACHE_INTERNED_STRINGS_BUFFER:-32}'; \
-    echo 'opcache.max_accelerated_files = ${OPCACHE_MAX_ACCELERATED_FILES:-10000}'; \
-    echo 'opcache.revalidate_freq = ${OPCACHE_REVALIDATE_FREQ:-30}'; \
-    echo 'opcache.validate_timestamps = ${OPCACHE_VALIDATE_TIMESTAMPS:-1}'; \
+    echo 'opcache.memory_consumption = ${OPCACHE_MEMORY_CONSUMPTION}'; \
+    echo 'opcache.interned_strings_buffer = ${OPCACHE_INTERNED_STRINGS_BUFFER}'; \
+    echo 'opcache.max_accelerated_files = ${OPCACHE_MAX_ACCELERATED_FILES}'; \
+    echo 'opcache.revalidate_freq = ${OPCACHE_REVALIDATE_FREQ}'; \
+    echo 'opcache.validate_timestamps = ${OPCACHE_VALIDATE_TIMESTAMPS}'; \
     echo 'opcache.file_cache = /var/cache/php-opcache'; \
     } > /usr/local/etc/php/conf.d/opcache.template
 
@@ -88,7 +88,7 @@ RUN { \
     echo 'sendmail_path = /usr/bin/msmtp -t'; \
     } > /usr/local/etc/php/conf.d/mail.template
 
-# --- Stap 3: msmtp configuratie template ---
+# --- Step 3: msmtp configuration template ---
 RUN { \
     echo 'account default'; \
     echo 'host $SMTP_HOST'; \
@@ -99,11 +99,11 @@ RUN { \
     echo 'syslog LOG_MAIL'; \
     } > /etc/msmtp.template
 
-# --- Stap 4: Directories voor cache, sessions en logs ---
+# --- Step 4: Directories for cache, sessions and logs ---
 RUN mkdir -p /var/log/php /var/cache/php-opcache /var/lib/php/sessions /run/php && \
     chmod 755 /var/cache/php-opcache /var/lib/php/sessions /run/php /var/log/php
 
-# --- Stap 5: Entrypoint script ---
+# --- Step 5: Entrypoint script ---
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

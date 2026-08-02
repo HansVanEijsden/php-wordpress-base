@@ -1,44 +1,48 @@
 # PHP WordPress Base Image
 
-Een geoptimaliseerde PHP-FPM 8.5 Docker image speciaal voor WordPress, met APCu, OPcache, en automatische gebruikersrechten.
+An optimized **PHP-FPM 8.5** Docker image for WordPress, built on Debian 13 ("Trixie"). It maps host users (PUID/PGID) into the container and renders all PHP / FPM / mail configuration from environment variables at container start. It is the shared base image for many WordPress sites across a multi-server Docker stack.
 
-## Kenmerken
+## Features
 
-- PHP 8.5 FPM - Gebaseerd op Debian 13 (Trixie)
-- Geoptimaliseerd voor WordPress - Specifieke PHP settings voor verbeterde performance
-- APCu voor Object Cache - Met igbinary serializer voor snellere caching
-- OPcache - Met file cache voor betere performance na start
-- Automatische gebruikersrechten - Draait met dezelfde PUID/PGID als de host
-- Per-site configuratie - Elke WordPress installatie kan eigen resources krijgen
-- MSMTP ingebouwd - Mail verzenden via host SMTP
-- Beveiligd - Gevaarlijke PHP functies uitgeschakeld
-- Multi-site ready - Werkt met WordPress Multisite installaties
+- **PHP 8.5 FPM** — official image on Debian 13 (Trixie)
+- **Optimized for WordPress** — tuned PHP settings for performance and security
+- **APCu object cache** — with the igbinary serializer for fast, compact caching
+- **OPcache** — with file cache for faster performance after restart
+- **Redis extension** — ready for a Redis object-cache drop-in
+- **Imagick** — for image processing
+- **Automatic user mapping** — runs with the same PUID/PGID as the host
+- **Per-site configuration** — every WordPress installation sets its own resources via environment variables
+- **msmtp built-in** — mail via a host SMTP relay
+- **Secure** — dangerous PHP functions disabled, `expose_php` off, secure session cookies
+- **Multi-site ready** — works with WordPress Multisite
 
-## Beschikbare tags
+## Tags
 
-| Tag | Beschrijving | Wanneer gebruiken |
-|-----|--------------|-------------------|
-| latest | Meest recente stable versie | Productie omgevingen |
-| v1.0.0 | Semantische version tags | Specifieke versie vastzetten |
-| main-abc1234 | Commit SHA tag | Debugging / testen |
+| Tag | Description | When to use |
+|-----|-------------|-------------|
+| `latest` | Most recent build from `main` | Production |
+| `vX.Y.Z` | Semantic version (from `v*` git tags) | Pin a specific release |
+| `<short-sha>` | Commit SHA | Debugging / testing a specific commit |
 
-## Vereisten
+## Requirements
 
-- Docker 20.10+ en Docker Compose 2.0+
-- Een bestaand Docker netwerk: phpnet met subnet 172.50.0.0/24
-- Toegang tot GitHub Container Registry (ghcr.io)
+- Docker 20.10+ and Docker Compose 2.0+
+- An existing Docker network: `phpnet` (subnet `172.50.0.0/24`)
+- Access to GitHub Container Registry (`ghcr.io`)
 
-## Eénmalige setup
+## One-time setup
 
-### Maak het Docker netwerk aan
-
+```bash
 docker network create --subnet=172.50.0.0/24 phpnet
-
-## Gebruik
-
-### Basis docker-compose.yaml
-
 ```
+
+## Quick start
+
+Copy `.env.example` to `.env`, adjust the values, then start the stack. See the environment variable reference below.
+
+### docker-compose.yaml
+
+```yaml
 services:
   php:
     image: ghcr.io/hansvaneijsden/php-wordpress-base:latest
@@ -46,50 +50,65 @@ services:
     restart: unless-stopped
     user: root
     environment:
-      # Gebruiker instellingen (verplicht!)
+      # Required
+      - CONTAINER_NAME=${CONTAINER_NAME}
       - PUID=${PUID}
       - PGID=${PGID}
       - USERNAME=${USERNAME}
-      
-      # PHP instellingen
-      - TIMEZONE=${TIMEZONE:-Europe/Amsterdam}
-      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-256M}
-      - PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE:-64M}
-      - PHP_POST_MAX_SIZE=${PHP_POST_MAX_SIZE:-64M}
-      - PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME:-300}
-      - PHP_MAX_INPUT_VARS=${PHP_MAX_INPUT_VARS:-4000}
-      
-      # APCu instellingen
-      - APC_SHM_SIZE=${APC_SHM_SIZE:-32M}
-      
-      # OPcache instellingen
-      - OPCACHE_MEMORY_CONSUMPTION=${OPCACHE_MEMORY_CONSUMPTION:-348}
-      - OPCACHE_INTERNED_STRINGS_BUFFER=${OPCACHE_INTERNED_STRINGS_BUFFER:-32}
-      - OPCACHE_MAX_ACCELERATED_FILES=${OPCACHE_MAX_ACCELERATED_FILES:-10000}
-      
-      # Session instellingen
+      - VOLUME_PREFIX=${VOLUME_PREFIX}
+
+      # PHP
+      - TIMEZONE=${TIMEZONE}
+      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT}
+      - PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE}
+      - PHP_POST_MAX_SIZE=${PHP_POST_MAX_SIZE}
+      - PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME}
+      - PHP_MAX_INPUT_VARS=${PHP_MAX_INPUT_VARS}
+
+      # APCu
+      - APC_SHM_SIZE=${APC_SHM_SIZE}
+
+      # OPcache
+      - OPCACHE_MEMORY_CONSUMPTION=${OPCACHE_MEMORY_CONSUMPTION}
+      - OPCACHE_INTERNED_STRINGS_BUFFER=${OPCACHE_INTERNED_STRINGS_BUFFER}
+      - OPCACHE_MAX_ACCELERATED_FILES=${OPCACHE_MAX_ACCELERATED_FILES}
+      - OPCACHE_REVALIDATE_FREQ=${OPCACHE_REVALIDATE_FREQ}
+      - OPCACHE_VALIDATE_TIMESTAMPS=${OPCACHE_VALIDATE_TIMESTAMPS}
+
+      # Sessions
       - SESSION_SAVE_PATH=/var/lib/php/sessions
-      
-      # PHP-FPM pool instellingen
-      - PM_TYPE=${PM_TYPE:-dynamic}
-      - PM_MAX_CHILDREN=${PM_MAX_CHILDREN:-20}
-      - PM_START_SERVERS=${PM_START_SERVERS:-5}
-      - PM_MIN_SPARE_SERVERS=${PM_MIN_SPARE_SERVERS:-3}
-      - PM_MAX_SPARE_SERVERS=${PM_MAX_SPARE_SERVERS:-10}
-      
-      # SMTP instellingen
-      - SMTP_HOST=${SMTP_HOST:-127.0.0.1}
-      - SMTP_PORT=${SMTP_PORT:-25}
-      - SMTP_FROM=${SMTP_FROM:-localhost}
-    
+
+      # PHP-FPM pool
+      - PM_TYPE=${PM_TYPE}
+      - PM_MAX_CHILDREN=${PM_MAX_CHILDREN}
+      - PM_START_SERVERS=${PM_START_SERVERS}
+      - PM_MIN_SPARE_SERVERS=${PM_MIN_SPARE_SERVERS}
+      - PM_MAX_SPARE_SERVERS=${PM_MAX_SPARE_SERVERS}
+      - PM_MAX_REQUESTS=${PM_MAX_REQUESTS}
+
+      # SMTP (mail relay)
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_FROM=${SMTP_FROM}
+
     volumes:
       - ${WP_PATH}:/var/www/html:rw
       - php-opcache-data:/var/cache/php-opcache
       - php-session-data:/var/lib/php/sessions
-    
+      - /run/mysqld:/run/mysqld
+      - /run/php:/run/php
+      - ${LOG_PATH}:/var/log/php:rw
+
     networks:
       phpnet:
         ipv4_address: ${CONTAINER_IP}
+
+    healthcheck:
+      test: ["CMD-SHELL", "cgi-fcgi -bind -connect /run/php/${CONTAINER_NAME}.sock /ping || kill -s 15 1"]
+      interval: 360s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   wp-cli:
     image: wordpress:cli
@@ -97,6 +116,7 @@ services:
     user: "${PUID}:${PGID}"
     volumes:
       - ${WP_PATH}:/var/www/html
+      - /run/php:/run/php
     networks:
       - phpnet
     working_dir: /var/www/html
@@ -125,196 +145,156 @@ volumes:
     name: ${VOLUME_PREFIX}-php-sessions
 ```
 
-### Voorbeeld .env bestand
+## Environment variable reference
 
-```
-# Container instellingen
-CONTAINER_NAME=my-website-php
-VOLUME_PREFIX=my-website
-CONTAINER_IP=172.50.0.10
+### Required
 
-# Gebruiker instellingen (verplicht!)
-PUID=1001
-PGID=1001
-USERNAME=gebruiker
+| Variable | Description |
+|---|---|
+| `PUID` | Host user ID to map into the container |
+| `PGID` | Host group ID to map into the container |
+| `USERNAME` | Username created inside the container |
+| `CONTAINER_NAME` | Container name; used for the FPM socket, log files and pool name |
+| `VOLUME_PREFIX` | Prefix for the named volumes and the FPM pool name |
 
-# WordPress domein
-WP_DOMAIN=example.com
-WP_PATH=/var/www/example.com/public
+### Optional (the image applies a default when unset)
 
-# PHP resource instellingen
-PHP_MEMORY_LIMIT=256M
-PHP_UPLOAD_MAX_FILESIZE=64M
-PHP_POST_MAX_SIZE=64M
-PHP_MAX_EXECUTION_TIME=300
-PHP_MAX_INPUT_VARS=4000
+| Variable | Default | Description |
+|---|---|---|
+| `TIMEZONE` | `Europe/Amsterdam` | PHP timezone |
+| `PHP_MEMORY_LIMIT` | `256M` | PHP `memory_limit` |
+| `PHP_UPLOAD_MAX_FILESIZE` | `64M` | PHP `upload_max_filesize` |
+| `PHP_POST_MAX_SIZE` | `64M` | PHP `post_max_size` |
+| `PHP_MAX_EXECUTION_TIME` | `300` | PHP `max_execution_time` (seconds) |
+| `PHP_MAX_INPUT_VARS` | `4000` | PHP `max_input_vars` |
+| `APC_SHM_SIZE` | `16M` | APCu shared memory size |
+| `OPCACHE_MEMORY_CONSUMPTION` | `192` | OPcache memory (MB) |
+| `OPCACHE_INTERNED_STRINGS_BUFFER` | `32` | OPcache interned strings buffer (MB) |
+| `OPCACHE_MAX_ACCELERATED_FILES` | `10000` | OPcache max accelerated files |
+| `OPCACHE_REVALIDATE_FREQ` | `30` | OPcache revalidate frequency (seconds) |
+| `OPCACHE_VALIDATE_TIMESTAMPS` | `1` | OPcache validate timestamps |
+| `SESSION_SAVE_PATH` | `/var/lib/php/sessions` | PHP session save path |
+| `SMTP_HOST` | `127.0.0.1` | msmtp relay host |
+| `SMTP_PORT` | `25` | msmtp relay port |
+| `SMTP_FROM` | `localhost` | msmtp "From" address |
+| `PM_TYPE` | `dynamic` | FPM process manager: `dynamic`, `static` or `ondemand` |
+| `PM_MAX_CHILDREN` | `20` | FPM max children |
+| `PM_START_SERVERS` | `5` | FPM start servers |
+| `PM_MIN_SPARE_SERVERS` | `3` | FPM min spare servers |
+| `PM_MAX_SPARE_SERVERS` | `10` | FPM max spare servers |
+| `PM_MAX_REQUESTS` | `500` | FPM max requests per child |
+| `REQUEST_TERMINATE_TIMEOUT` | `60s` | FPM request terminate timeout |
+| `ENABLE_STATUS_ENDPOINTS` | `true` | Write OPcache/APCu status endpoints to `/tmp` |
 
-# APC instellingen
-APC_SHM_SIZE=32M
+`CONTAINER_IP`, `WP_PATH`, `WP_DOMAIN` and `LOG_PATH` are used by the compose file (network IP, volumes, the wp-cli service and the log directory); they are not read by the image itself.
 
-# OPcache instellingen
-OPCACHE_MEMORY_CONSUMPTION=348
-OPCACHE_INTERNED_STRINGS_BUFFER=32
-OPCACHE_MAX_ACCELERATED_FILES=10000
+## How it works
 
-# PHP-FPM pool instellingen
-PM_TYPE=dynamic
-PM_MAX_CHILDREN=20
-PM_START_SERVERS=5
-PM_MIN_SPARE_SERVERS=3
-PM_MAX_SPARE_SERVERS=10
+- **Configuration is rendered at startup.** `docker-entrypoint.sh` uses `envsubst` to render the built-in `*.template` files into the real PHP / FPM / msmtp configuration, substituting the environment variables above.
+- **User mapping.** The container runs as `root`; the entrypoint creates a user/group from `PUID`/`PGID` and PHP-FPM drops privileges to that user.
+- **Per-container FPM pool.** The pool `[www]` is renamed to `[<VOLUME_PREFIX|CONTAINER_NAME>]` and listens on `/run/php/<CONTAINER_NAME>.sock`.
+- **MySQL socket.** The default MySQL socket is set to `/run/mysqld/mysqld.sock` — mount the host socket into the container (see the compose example).
+- The entrypoint ignores the container command and always starts `php-fpm` in the foreground.
 
-# SMTP instellingen
-SMTP_HOST=127.0.0.1
-SMTP_PORT=25
-SMTP_FROM=localhost
-```
+## Health check & monitoring
 
-## Optimalisatie per WordPress installatie
+- The compose example uses `cgi-fcgi` to hit the FPM ping endpoint: `GET /ping` returns `pong`.
+- Optional status endpoints are written to `/tmp/opcache-status.php` and `/tmp/apcu-status.php` (JSON). Disable with `ENABLE_STATUS_ENDPOINTS=false`.
 
-### Kleine website
+## Optimization per site
 
-PHP_MEMORY_LIMIT=128M
-PM_MAX_CHILDREN=10
-OPCACHE_MEMORY_CONSUMPTION=96
-APC_SHM_SIZE=16M
+| Setting | Small | Medium | Large |
+|---|---|---|---|
+| `PHP_MEMORY_LIMIT` | `128M` | `256M` | `512M` |
+| `PM_MAX_CHILDREN` | `10` | `20` | `40` |
+| `OPCACHE_MEMORY_CONSUMPTION` | `96` | `256` | `512` |
+| `APC_SHM_SIZE` | `16M` | `32M` | `64M` |
 
-### Gemiddelde website
+## WP-CLI
 
-PHP_MEMORY_LIMIT=256M
-PM_MAX_CHILDREN=20
-OPCACHE_MEMORY_CONSUMPTION=256
-APC_SHM_SIZE=32M
-
-### Grote website
-
-PHP_MEMORY_LIMIT=512M
-PM_MAX_CHILDREN=40
-OPCACHE_MEMORY_CONSUMPTION=512
-APC_SHM_SIZE=64M
-
-## Beheer met WP-CLI
-
-# WordPress installatie
+```bash
+# Install WordPress
 docker compose run --rm wp-cli core install --url=example.com --title="My Website" --admin_user=admin --admin_password=securepass --admin_email=admin@example.com
 
-# Plugins lijst
+# List plugins
 docker compose run --rm wp-cli plugin list
 
-# Database optimalisatie
+# Optimize the database
 docker compose run --rm wp-cli db optimize
 
-# Cache clearen
+# Flush the cache
 docker compose run --rm wp-cli cache flush
+```
 
-## Onderhoud
+## Maintenance
 
-### Container logs bekijken
+```bash
+# View logs
 docker compose logs -f php
 
-### Container herstarten
+# Restart
 docker compose restart php
 
-### Image updaten naar nieuwste versie
+# Update the image
 docker compose pull php
 docker compose up -d php
 
-### Resource usage monitoren
+# Monitor resource usage
 docker stats ${CONTAINER_NAME}
+```
 
 ## Troubleshooting
 
-### Fout: "PUID, PGID, and USERNAME environment variables are required"
+### "PUID, PGID, USERNAME, and CONTAINER_NAME are required"
 
-Oorzaak: Environment variabelen niet correct doorgegeven.
-Oplossing: Controleer of .env bestand bestaat en variabelen bevat.
+One of the required variables is missing. Make sure it is set in `.env` **and** passed in the `environment:` section of the php service.
 
-### Fout: "invalid process manager"
+### "invalid process manager"
 
-Oorzaak: PM_TYPE heeft een ongeldige waarde.
-Oplossing: Gebruik dynamic, static of ondemand (kleine letters).
+`PM_TYPE` has an invalid value. Use `dynamic`, `static` or `ondemand` (lowercase).
 
-### Fout: "unable to parse value for entry 'pm'"
+### The container exits immediately
 
-Oorzaak: De PM_TYPE variabele is niet vervangen.
-Oplossing: Zorg dat PM_TYPE in de environment sectie staat.
+Check the logs: `docker compose logs php` and `docker compose config`. The entrypoint runs `php-fpm -t` at startup and exits non-zero if the generated configuration is invalid.
 
-### Container start niet op
+### Smoke test the image
 
-docker compose logs php
-docker compose config
+```bash
+docker build -t php-wordpress-base .
+docker run -d --name smoke-test \
+  -e PUID=1000 -e PGID=1000 -e USERNAME=test -e CONTAINER_NAME=test \
+  php-wordpress-base
+docker exec smoke-test php -v
+docker rm -f smoke-test
+```
 
-docker run --rm -e PUID=1000 -e PGID=1000 -e USERNAME=test ghcr.io/hansvaneijsden/php-wordpress-base:latest php -v
+## Security
 
-## Beveiliging
+- Dangerous PHP functions disabled: `exec, passthru, shell_exec, system, popen, parse_ini_file, show_source`
+- `expose_php = Off` — hides the PHP version
+- Secure session cookies (`session.cookie_secure`, `session.cookie_httponly`, `session.cookie_samesite = Lax`)
+- Strict session mode (`session.use_strict_mode = 1`)
+- `display_errors = off` in the FPM pool
+- Based on the official PHP images
+- Public images are automatically scanned for vulnerabilities by GitHub Container Registry
 
-Deze image heeft de volgende beveiligingsmaatregelen:
+## Performance
 
-- Gevaarlijke PHP functies uitgeschakeld (exec, shell_exec, etc.)
-- expose_php = Off - Verbergt PHP versie informatie
-- Secure session cookies (session.cookie_secure = 1)
-- Strict session mode (session.use_strict_mode = 1)
-- Wekelijkse security scans met Trivy
-- Gebaseerd op officiële PHP images
+- **OPcache file cache** — compiled scripts cached on disk
+- **igbinary serializer** — faster, more compact serialization (APCu, Redis, sessions)
+- **APCu object cache** — for WordPress transients (object-cache drop-in)
+- **OPcache interned strings** — saves memory for duplicate strings
+- **Configurable PHP-FPM pool** — tuned per site
 
-## Performance optimalisaties
+## Contributing
 
-De image bevat:
+Issues and pull requests are welcome. Please:
 
-- OPcache file cache - Gecached scripts opslaan op disk
-- Igbinary serializer - Snellere en compactere serialization
-- APCu object cache - Voor WordPress transients via SQLite Object Cache plugin
-- OPcache interned strings - Bespaart geheugen voor duplicate strings
-- PHP-FPM static/dynamic pool - Aanpasbaar per website
+1. Build and smoke-test the image locally before opening a PR
+2. Do not break the GitHub Actions workflows
+3. Keep the image backward compatible — existing deployments pass their own env vars
+4. Update the README and `.env.example` when the env-var surface changes
 
-## Contribueren
+## License
 
-Issues en pull requests zijn welkom! Zorg dat je:
-
-1. De Dockerfile lokaal test
-2. De GitHub Actions workflow niet breekt
-3. De README update indien nodig
-
-## Changelog
-
-### v1.0.0 (2026-05-31)
-
-- Eerste stabiele release
-- PHP 8.5 FPM basis
-- APCu en OPcache optimalisaties
-- Automatische gebruikersrechten
-- MSMTP integratie voor mail
-
-## Licentie
-
-MIT License - Vrij te gebruiken en aan te passen.
-
-## Credits
-
-- PHP Docker official images
-- WordPress Docker Hub
-- Trivy security scanner
-
-## Snelle start voor een nieuwe WordPress site
-
-# 1. Clone de repository template
-git clone https://github.com/HansVanEijsden/php-wordpress-base.git my-site
-cd my-site
-
-# 2. Kopieer en pas .env aan
-cp .env.example .env
-nano .env
-
-# 3. Start de container
-docker compose up -d
-
-# 4. Installeer WordPress
-docker compose run --rm wp-cli core download
-docker compose run --rm wp-cli config create --dbname=wordpress --dbuser=root --dbpass=password --dbhost=mariadb
-docker compose run --rm wp-cli core install --url=example.com --title="My Site" --admin_user=admin --admin_password=secure --admin_email=admin@example.com
-
-# 5. Bezoek je website, zodra je je frontend via FastCGI hebt geconfigureerd!
-
-Tip: Voor productieomgevingen wordt aangeraden om een specifieke versie tag te gebruiken in plaats van latest, bijvoorbeeld v1.0.0.
-
-Bug gevonden? Open een issue op GitHub
+MIT
