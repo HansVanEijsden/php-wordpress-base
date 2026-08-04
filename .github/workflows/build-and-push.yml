@@ -12,6 +12,7 @@ jobs:
   build-and-push:
     name: Build and Push to GitHub Container Registry
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     
     permissions:
       contents: read
@@ -43,6 +44,10 @@ jobs:
             type=sha,format=short
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
+      - name: Get commit timestamp
+        id: commit
+        run: echo "timestamp=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
         with:
@@ -55,7 +60,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            BUILD_DATE=${{ github.event.repository.updated_at }}
+            BUILD_DATE=${{ steps.commit.outputs.timestamp }}
             VCS_REF=${{ github.sha }}
             VERSION=${{ github.ref_name }}
 
