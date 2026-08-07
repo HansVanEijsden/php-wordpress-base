@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# wpx — run WP-CLI inside a WordPress site's PHP container.
+#
+# Usage: wpx <site> [wp args...]
+#
+#   <site>  identifies the site; matched against the running *-php containers
+#           (exact match first, then a "-" delimited substring).
+#
+# Examples:
+#   wpx rtv1ijsseldelta-rtv1ijsseldelta plugin list
+#   wpx pim-112app db optimize
+#   wpx sykam-sykam search-replace oud.nl nieuw.nl --all-tables
+#
+# WP-CLI runs inside the running site container (same PHP runtime, extensions,
+# database socket and wp-config as the site) and as the site user, so files
+# created by wp-cli keep the correct ownership.
+set -euo pipefail
+
+site="${1:?Usage: wpx <site> [wp args...]}"
+shift
+
+# Resolve the container: exact "<site>-php" first, then substring match.
+container="$(
+  docker ps --format '{{.Names}}' | awk -v site="$site" '
+    $0 == site "-php" { print; exit }
+  '
+)"
+if [[ -z "$container" ]]; then
+  container="$(
+    docker ps --format '{{.Names}}' | awk -v site="$site" '
+      /-php$/ && index($0, site "-") { print; exit }
+      /-php$/ && index($0, "-" site "-") { print; exit }
+    '
+  )"
+fi
+
+if [[ -z "$container" ]]; then
+  echo "fout: geen draaiende -php-container gevonden voor '$site'" >&2
+  echo "beschikbare containers:" >&2
+  docker ps --format '  {{.Names}}' | grep -- '-php$' >&2 || true
+  exit 1
+fi
+
+# Site user inside the container (owns the WP files).
+user="$(docker exec "$container" printenv USERNAME 2>/dev/null | tr -d '\r' | tail -n1)"
+[[ -n "$user" ]] || user=www-data
+
+# Interactive (TTY) vs piped usage.
+if [[ -t 0 ]] && [[ -t 1 ]]; then
+  exec docker exec -it -u "$user" -w /var/www/html "$container" wp "$@"
+else
+  exec docker exec -i -u "$user" -w /var/www/html "$container" wp "$@"
+fi
