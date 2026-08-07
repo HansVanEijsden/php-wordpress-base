@@ -106,7 +106,7 @@ ping.path = /ping
 ping.response = pong
 
 ; FPM status endpoint (plain/full). Only reachable via the localhost-only
-; nginx proxy (rtv1ijsseldelta.conf /fpm-status); not exposed publicly.
+; nginx proxy (/fpm-status); not exposed publicly.
 pm.status_path = /fpm-status
 
 security.limit_extensions = .php

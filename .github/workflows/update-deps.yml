@@ -84,7 +84,7 @@ jobs:
           fi
 
           if [[ "$changed" -eq 0 ]]; then
-            echo "Niets te doen: php=$CUR_PHP, wp-cli=$CUR_WP (beide actueel)."
+            echo "Nothing to do: php=$CUR_PHP, wp-cli=$CUR_WP (both current)."
             exit 0
           fi
 
@@ -92,32 +92,32 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # De repo-ruleset blokkeert force-push (non_fast_forward) en
-          # branch-verwijdering (deletion). Dus: hergebruik de branch met
-          # fast-forward-only pushes — merge main erin, bump-commit erbovenop.
+          # The repo ruleset blocks force-push (non_fast_forward) and branch
+          # deletion. Reuse the branch with fast-forward-only pushes: merge
+          # main into it, then add the bump commit on top.
           if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
-            echo "Branch $BRANCH bestaat; synchroniseren met main."
+            echo "Branch $BRANCH exists; syncing with main."
             git fetch origin "$BRANCH" origin/main
             git checkout -B "$BRANCH" "origin/$BRANCH"
-            git merge --no-edit origin/main || { echo "Merge-conflict met main; abort."; git merge --abort; exit 1; }
+            git merge --no-edit origin/main || { echo "Merge conflict with main; aborting."; git merge --abort; exit 1; }
           else
-            echo "Nieuwe branch $BRANCH vanaf main."
+            echo "New branch $BRANCH from main."
             git checkout -b "$BRANCH" origin/main
           fi
 
           git add Dockerfile
           git commit -m "chore(deps): update php base image and WP-CLI"
-          git push origin "$BRANCH" || { echo "Push geweigerd (ruleset?)."; exit 1; }
+          git push origin "$BRANCH" || { echo "Push rejected (ruleset?)."; exit 1; }
 
           NEW_PHP="${PHP_LATEST:-$CUR_PHP}"
           NEW_WP="${WPCLI_LATEST:-$CUR_WP}"
           TITLE="chore(deps): php ${CUR_PHP}->${NEW_PHP}, wp-cli ${CUR_WP}->${NEW_WP}"
-          BODY=$(printf 'Automatische update door de update-base-deps workflow.\n\n- PHP base image: php:%s-fpm -> php:%s-fpm\n- WP-CLI: %s -> %s (sha512 wordt bij de build geverifieerd)\n\nDe auto-merge workflow merged dit automatisch (squash).' "$CUR_PHP" "$NEW_PHP" "$CUR_WP" "$NEW_WP")
+          BODY=$(printf 'Automatic update by the update-base-deps workflow.\n\n- PHP base image: php:%s-fpm -> php:%s-fpm\n- WP-CLI: %s -> %s (sha512 verified at build)\n\nThe auto-merge workflow merges this automatically (squash).' "$CUR_PHP" "$NEW_PHP" "$CUR_WP" "$NEW_WP")
 
           if gh pr view "$BRANCH" --json number --jq .number >/dev/null 2>&1; then
             gh pr edit "$BRANCH" --title "$TITLE" --body "$BODY" --add-label dependencies
-            echo "Bestaande PR bijgewerkt (branch $BRANCH)."
+            echo "Existing PR updated (branch $BRANCH)."
           else
             gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$BODY" --label dependencies
-            echo "Nieuwe PR aangemaakt (branch $BRANCH)."
+            echo "New PR created (branch $BRANCH)."
           fi
