@@ -110,29 +110,6 @@ services:
       retries: 3
       start_period: 30s
 
-  wp-cli:
-    image: wordpress:cli
-    container_name: ${CONTAINER_NAME}-cli
-    user: "${PUID}:${PGID}"
-    volumes:
-      - ${WP_PATH}:/var/www/html
-      - /run/php:/run/php
-    networks:
-      - phpnet
-    working_dir: /var/www/html
-    environment:
-      - HTTP_HOST=${WP_DOMAIN}
-      - HTTPS=on
-      - REMOTE_ADDR=127.0.0.1
-      - SERVER_PORT=443
-      - SERVER_NAME=${WP_DOMAIN}
-      - SERVER_PROTOCOL=HTTP/2.0
-      - REQUEST_METHOD=GET
-      - DOCUMENT_ROOT=/var/www/html
-    entrypoint: ["wp"]
-    profiles:
-      - cli
-
 networks:
   phpnet:
     external: true
@@ -186,7 +163,7 @@ volumes:
 | `REQUEST_TERMINATE_TIMEOUT` | `60s` | FPM request terminate timeout |
 | `ENABLE_STATUS_ENDPOINTS` | `true` | Write OPcache/APCu status endpoints to `/tmp` |
 
-`CONTAINER_IP`, `WP_PATH`, `WP_DOMAIN` and `LOG_PATH` are used by the compose file (network IP, volumes, the wp-cli service and the log directory); they are not read by the image itself.
+`CONTAINER_IP`, `WP_PATH`, `WP_DOMAIN` and `LOG_PATH` are used by the compose file (network IP, volumes and the log directory); they are not read by the image itself.
 
 ## How it works
 
