@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: main
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Detect latest versions
         id: detect
@@ -91,10 +91,23 @@ jobs:
           BRANCH="bot/update-base-deps"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+
+          # De repo-ruleset blokkeert force-push (non_fast_forward) en
+          # branch-verwijdering (deletion). Dus: hergebruik de branch met
+          # fast-forward-only pushes — merge main erin, bump-commit erbovenop.
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            echo "Branch $BRANCH bestaat; synchroniseren met main."
+            git fetch origin "$BRANCH" origin/main
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            git merge --no-edit origin/main || { echo "Merge-conflict met main; abort."; git merge --abort; exit 1; }
+          else
+            echo "Nieuwe branch $BRANCH vanaf main."
+            git checkout -b "$BRANCH" origin/main
+          fi
+
           git add Dockerfile
           git commit -m "chore(deps): update php base image and WP-CLI"
-          git push -f origin "$BRANCH"
+          git push origin "$BRANCH" || { echo "Push geweigerd (ruleset?)."; exit 1; }
 
           NEW_PHP="${PHP_LATEST:-$CUR_PHP}"
           NEW_WP="${WPCLI_LATEST:-$CUR_WP}"
