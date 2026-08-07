@@ -1,11 +1,7 @@
 version: 2
 updates:
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "daily"
-    commit-message:
-      prefix: "chore(deps)"
+  # PHP base image (FROM php:8.5.x-fpm) and WP-CLI are updated by the
+  # update-base-deps workflow (deterministic, no Dependabot rate limits).
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

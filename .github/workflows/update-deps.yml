@@ -1,0 +1,110 @@
+name: Update base dependencies (php + wp-cli)
+
+# Checks daily (and on demand) for newer:
+#   - PHP base image:  php:8.5.<n>-fpm  (Docker Hub)
+#   - WP-CLI:          2.<m>.<p>        (GitHub release + sha512)
+# and opens/updates a single PR (branch bot/update-base-deps) with the bump.
+# Patch/minor updates within the pinned series are auto-merged by
+# auto-merge.yml. A new major series (php 8.6 / wp-cli 3.x) is intentionally
+# NOT auto-bumped — review that manually.
+#
+# Replaces the (slow, rate-limited) Dependabot docker updates for the FROM line.
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-base-deps
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Detect latest versions
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+
+          # Latest stable php 8.5.x-fpm tag (numeric patch only, no RC/rc).
+          LAT_PHP=$(curl -fsSL "https://hub.docker.com/v2/repositories/library/php/tags?name=8.5&page_size=100&ordering=last_updated" \
+            | python3 -c "import sys,json,re; tags=[t['name'] for t in json.load(sys.stdin)['results']]; f=[t for t in tags if re.fullmatch(r'8\.5\.\d+-fpm',t)]; print(sorted(f,key=lambda x:[int(i) for i in x[:-4].split('.')])[-1][:-4])")
+
+          # Latest wp-cli release; only auto-bump within the 2.x series.
+          WP_TAG=$(gh api repos/wp-cli/wp-cli/releases/latest --jq .tag_name)
+          LAT_WP="${WP_TAG#v}"
+          LAT_SHA=""
+          if [[ "$LAT_WP" == 2.* ]]; then
+            LAT_SHA=$(curl -fsSL "https://github.com/wp-cli/wp-cli/releases/download/v${LAT_WP}/wp-cli-${LAT_WP}.phar.sha512" | awk '{print $1}')
+          else
+            LAT_WP=""
+          fi
+
+          echo "php_latest=$LAT_PHP" >> "$GITHUB_OUTPUT"
+          echo "wpcli_latest=$LAT_WP" >> "$GITHUB_OUTPUT"
+          echo "wpcli_sha=$LAT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Apply bump and open/update PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PHP_LATEST: ${{ steps.detect.outputs.php_latest }}
+          WPCLI_LATEST: ${{ steps.detect.outputs.wpcli_latest }}
+          WPCLI_SHA: ${{ steps.detect.outputs.wpcli_sha }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+
+          CUR_PHP=$(sed -n 's/^FROM php:\([0-9.]*\)-fpm/\1/p' Dockerfile)
+          CUR_WP=$(sed -n 's/^ARG WP_CLI_VERSION=\(.*\)/\1/p' Dockerfile)
+
+          changed=0
+          if [[ -n "${PHP_LATEST:-}" && "$PHP_LATEST" != "$CUR_PHP" ]]; then
+            sed -i "s#^FROM php:${CUR_PHP}-fpm#FROM php:${PHP_LATEST}-fpm#" Dockerfile
+            changed=1
+          fi
+          if [[ -n "${WPCLI_LATEST:-}" && "$WPCLI_LATEST" != "$CUR_WP" ]]; then
+            sed -i "s#^ARG WP_CLI_VERSION=.*#ARG WP_CLI_VERSION=${WPCLI_LATEST}#" Dockerfile
+            sed -i "s#^ARG WP_CLI_SHA512=.*#ARG WP_CLI_SHA512=${WPCLI_SHA}#" Dockerfile
+            changed=1
+          fi
+
+          if [[ "$changed" -eq 0 ]]; then
+            echo "Niets te doen: php=$CUR_PHP, wp-cli=$CUR_WP (beide actueel)."
+            exit 0
+          fi
+
+          BRANCH="bot/update-base-deps"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add Dockerfile
+          git commit -m "chore(deps): update php base image and WP-CLI"
+          git push -f origin "$BRANCH"
+
+          NEW_PHP="${PHP_LATEST:-$CUR_PHP}"
+          NEW_WP="${WPCLI_LATEST:-$CUR_WP}"
+          TITLE="chore(deps): php ${CUR_PHP}->${NEW_PHP}, wp-cli ${CUR_WP}->${NEW_WP}"
+          BODY=$(printf 'Automatische update door de update-base-deps workflow.\n\n- PHP base image: php:%s-fpm -> php:%s-fpm\n- WP-CLI: %s -> %s (sha512 wordt bij de build geverifieerd)\n\nDe auto-merge workflow merged dit automatisch (squash).' "$CUR_PHP" "$NEW_PHP" "$CUR_WP" "$NEW_WP")
+
+          if gh pr view "$BRANCH" --json number --jq .number >/dev/null 2>&1; then
+            gh pr edit "$BRANCH" --title "$TITLE" --body "$BODY" --add-label dependencies
+            echo "Bestaande PR bijgewerkt (branch $BRANCH)."
+          else
+            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$BODY" --label dependencies
+            echo "Nieuwe PR aangemaakt (branch $BRANCH)."
+          fi
