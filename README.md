@@ -212,19 +212,24 @@ volumes:
 
 ## WP-CLI
 
-```bash
-# Install WordPress
-docker compose run --rm wp-cli core install --url=example.com --title="My Website" --admin_user=admin --admin_password=securepass --admin_email=admin@example.com
+WP-CLI is baked into this image at `/usr/local/bin/wp` (pinned version, checksum
+verified at build time). Run it inside the **running** site container with
+`docker exec`, so it uses the exact same PHP runtime, extensions, database
+socket and `wp-config.php` as the site itself:
 
+```bash
 # List plugins
-docker compose run --rm wp-cli plugin list
+docker exec -it -u <USERNAME> <CONTAINER_NAME> wp plugin list
 
 # Optimize the database
-docker compose run --rm wp-cli db optimize
+docker exec -it -u <USERNAME> <CONTAINER_NAME> wp db optimize
 
 # Flush the cache
-docker compose run --rm wp-cli cache flush
+docker exec -it -u <USERNAME> <CONTAINER_NAME> wp cache flush
 ```
+
+For convenience you can install the `wpx <site>` wrapper (resolves the container
+and the site user automatically) on the host.
 
 ## Maintenance
 

@@ -103,7 +103,15 @@ RUN { \
 RUN mkdir -p /var/log/php /var/cache/php-opcache /var/lib/php/sessions /run/php && \
     chmod 755 /var/cache/php-opcache /var/lib/php/sessions /run/php /var/log/php
 
-# --- Step 5: Entrypoint script ---
+# --- Step 5: WP-CLI (pinned version, checksum verified) ---
+ARG WP_CLI_VERSION=2.12.0
+ARG WP_CLI_SHA512=be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd5d2c98605e6172e6d014dda2e27f88c98befc16c040cbb2bd1bfa121510ea5cdf5f6a30fe8832
+RUN curl -fsSL "https://github.com/wp-cli/wp-cli/releases/download/v${WP_CLI_VERSION}/wp-cli-${WP_CLI_VERSION}.phar" -o /usr/local/bin/wp \
+    && echo "${WP_CLI_SHA512}  /usr/local/bin/wp" | sha512sum -c - \
+    && chmod +x /usr/local/bin/wp \
+    && wp --info --allow-root
+
+# --- Step 6: Entrypoint script ---
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
