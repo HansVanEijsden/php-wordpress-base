@@ -153,7 +153,7 @@ volumes:
 | `SESSION_SAVE_PATH` | `/var/lib/php/sessions` | PHP session save path |
 | `SMTP_HOST` | `127.0.0.1` | msmtp relay host |
 | `SMTP_PORT` | `25` | msmtp relay port |
-| `SMTP_FROM` | `localhost` | msmtp "From" address |
+| `SMTP_FROM` | `localhost` | msmtp fallback "From" address (see *Mail delivery* below) |
 | `PM_TYPE` | `dynamic` | FPM process manager: `dynamic`, `static` or `ondemand` |
 | `PM_MAX_CHILDREN` | `20` | FPM max children |
 | `PM_START_SERVERS` | `5` | FPM start servers |
@@ -172,6 +172,27 @@ volumes:
 - **Per-container FPM pool.** The pool `[www]` is renamed to `[<VOLUME_PREFIX|CONTAINER_NAME>]` and listens on `/run/php/<CONTAINER_NAME>.sock`.
 - **MySQL socket.** The default MySQL socket is set to `/run/mysqld/mysqld.sock` — mount the host socket into the container (see the compose example).
 - The entrypoint ignores the container command and always starts `php-fpm` in the foreground.
+
+## Mail delivery (msmtp)
+
+PHP's `sendmail_path` is `msmtp -t --read-envelope-from`. msmtp derives the
+**SMTP envelope sender from each message's `From:` header** instead of using a
+fixed address. This keeps **SPF, DKIM and DMARC aligned** for sites that send
+mail from more than one domain (e.g. a WordPress/WPML site with both
+`example.com` and `example.nl`):
+
+- the relay host is reached on the Docker bridge network (`SMTP_HOST` /
+  `SMTP_PORT`, defaults `127.0.0.1:25`);
+- `SMTP_FROM` is only a **fallback** when a message has no usable `From:`
+  header;
+- the envelope domain always matches the `From:` domain, so SPF alignment and
+  DKIM signing use the correct domain and DMARC `p=reject` passes.
+
+> **Note:** with the default `msmtp -t` (no `--read-envelope-from`), a single
+> fixed envelope sender breaks delivery for multi-domain sites — the relay's
+> filter rejects the message (e.g. `554 5.7.1 Spam message rejected`) because
+> the envelope domain can never align with the `From:` domain under a
+> `p=reject` DMARC policy.
 
 ## Health check & monitoring
 

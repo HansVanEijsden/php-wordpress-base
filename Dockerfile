@@ -83,9 +83,13 @@ RUN { \
     echo 'session.serialize_handler = igbinary'; \
     } > /usr/local/etc/php/conf.d/session.template
 
+# PHP mail via msmtp. `--read-envelope-from` makes msmtp derive the SMTP
+# envelope sender from each message's From: header instead of the fixed
+# SMTP_FROM. This keeps SPF/DKIM/DMARC aligned for sites that send from
+# multiple domains (e.g. WPML); SMTP_FROM only serves as a fallback then.
 RUN { \
     echo 'mail.add_x_header = On'; \
-    echo 'sendmail_path = /usr/bin/msmtp -t'; \
+    echo 'sendmail_path = /usr/bin/msmtp -t --read-envelope-from'; \
     } > /usr/local/etc/php/conf.d/mail.template
 
 # --- Step 3: msmtp configuration template ---
