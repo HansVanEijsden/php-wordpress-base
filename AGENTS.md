@@ -8,10 +8,10 @@ A **Docker base image for WordPress** — PHP-FPM 8.5 on Debian 13 ("Trixie"), o
 
 ## Criticality: this image is a shared production base
 
-This image is the **shared base for many production WordPress sites**; each site's stack (in its own repository) references this image. When this repo updates on GitHub, the deployment pipeline pulls the stacks and redeploys with the new base image, so changes reach production automatically.
+This image is the **shared base for many production WordPress sites**; each site's stack (in its own repository) references this image. Pushing to `main` builds & pushes `:latest` via CI — but that **does not** recreate the production containers. A change only reaches production when the running WP containers are recreated against the new image (see *Deploying a change* below); there is **no** auto-redeploy hook.
 
 - **Backward compatibility is mandatory.** Existing sites pass their own env vars — never rely on behavior that breaks when a var is unset, and never remove/rename an env var without a migration path.
-- **Changes propagate automatically** to production without manual review — validate locally (build + smoke test) before pushing.
+- **Changes reach production without a review step** once containers are recreated — validate locally (build + smoke test) before pushing.
 - **One logical change per commit** so a bad change can be reverted cleanly.
 - **This repo is public** — never commit secrets or customer-specific details; keep docs professional and in English.
 
@@ -44,6 +44,38 @@ docker compose config
 ```
 
 There is no unit test suite. Validation happens at container start: the entrypoint runs `php-fpm -t` and exits non-zero on failure. Use the smoke-test above as the primary check after changes — or the `/build-and-test` prompt ([`.github/prompts/build-and-test.prompt.md`](.github/prompts/build-and-test.prompt.md)) for a deeper check (rendered `.ini` files, FPM socket, no literal `${...}` left in the config).
+
+## Deploying a change
+
+Pushing to `main` builds & pushes `:latest` via CI — that alone does **not** update production. The running WP containers must be recreated against the new image; there is no auto-redeploy hook.
+
+All WP stacks reference `:latest` and are managed by **Dockhand** (web UI on cloud, port 3001). The compose files for a stack live:
+- on **cloud** (the Dockhand host): `/opt/dockhand/stacks/<host>/<stack>/`
+- on the **remote hosts** (rtv / sykam / vps): `/data/stacks/<stack>/` — Dockhand runs only on cloud and manages these via the `hawser` agent (`127.0.0.1:2376`); there is **no** Dockhand container on the remote hosts.
+
+Redeploy per host, per stack (33 WP containers use this image: cloud 29, rtv 3, sykam 1):
+
+```bash
+cd /opt/dockhand/stacks/cloud.hansvaneijsden.nl/<stack>  # remote hosts: /data/stacks/<stack>
+docker compose pull php
+docker compose up -d php
+```
+
+`docker compose up -d` only recreates a container when its image or config actually changed, so it is safe to loop over all `*-php` stacks on a host.
+
+### Verify a deployed change
+
+1. **Confirm every host is on the new image** — each container's image ID must equal the local `:latest`:
+   `docker inspect <container> --format "{{.Image}}"` vs `docker image inspect ghcr.io/hansvaneijsden/php-wordpress-base:latest --format "{{.Id}}"`.
+2. **Check health** — each WP container should show `Up ... (healthy)` (compose healthcheck hits the FPM `/ping` endpoint).
+3. **Spot-check rendered config** in a running container — e.g. `docker exec <container> grep sendmail /usr/local/etc/php/conf.d/mail.ini` (confirms the new `sendmail_path`) and that no literal `${...}` remains.
+
+### Verification gotchas
+
+- `gh run watch <id>` opens a TUI (alternate buffer) that can hang the terminal — run it non-interactively: `gh run watch <id> | cat`; if it hangs, recover with `pkill -f "gh run watch"`.
+- Inspect a template baked into an image without a full smoke test: `docker run --rm --entrypoint cat <image> /usr/local/etc/php/conf.d/mail.template`.
+- Over SSH, `docker exec $(docker ps ...)` runs the `$(...)` substitution **locally** on the Mac — use single-quoted remote commands or hardcode container names.
+- Inline `php -r '...'` over SSH breaks on quoting — pipe a script via stdin instead: `echo "$B64" | base64 -d | ssh host 'docker exec -i <container> php'`.
 
 ## How it works (mental model)
 
