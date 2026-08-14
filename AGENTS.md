@@ -21,10 +21,13 @@ This image is the **shared base for many production WordPress sites**; each site
 |---|---|
 | `Dockerfile` | Image definition: PHP extensions, PECL packages, config **templates** (`*.template` → rendered at runtime) |
 | `docker-entrypoint.sh` | Runtime: validates env, creates the user, renders templates with `envsubst`, writes the FPM pool, starts `php-fpm` |
-| `.env.example` | Canonical list of every env var the image reads. **Keep in sync** when adding/renaming vars |
+| `scripts/wpx` | Host-side WP-CLI wrapper (runs `wp` inside the site's `*-php` container) |
+| `.env.example` | Canonical list of env vars used by the image (plus a few compose-only vars - `CONTAINER_IP`, `WP_PATH`, `WP_DOMAIN`, `LOG_PATH` - listed for stack wiring, not read by the image). **Keep in sync** when adding/renaming vars |
 | `.github/workflows/build-and-push.yml` | Builds & pushes to GHCR on `main` (→ `latest`) and `v*` tags (→ semver) |
 | `.github/workflows/hadolint.yml` | Dockerfile lint (SARIF, non-failing) |
-| `.github/dependabot.yml` | Daily base-image bumps (`php:8.5.8-fpm`), commit prefix `chore(deps)` |
+| `.github/workflows/update-deps.yml` | Daily base-image + WP-CLI bumps (`php:8.5.9-fpm`) via bot branch `bot/update-base-deps`, commit prefix `chore(deps)` |
+| `.github/workflows/auto-merge.yml` | Auto-merges dependency PRs |
+| `.github/dependabot.yml` | `github-actions` ecosystem updates (weekly); base-image bumps moved to `update-deps.yml` |
 
 ## Build & test
 
@@ -39,7 +42,7 @@ docker run -d --name smoke-test \
 docker exec smoke-test php -v
 docker rm -f smoke-test
 
-# Compose config validation (external phpnet network required for `up`)
+# Compose config validation - run inside a WP stack dir that uses this image (this repo has no compose file; the external phpnet network is required for `up`)
 docker compose config
 ```
 
@@ -104,6 +107,6 @@ Rule for new templates: use plain `${VAR}` and apply defaults **before** `envsub
 ## Conventions
 
 - **Docs and code comments are in English.** Commit messages are English, descriptive, one logical change per commit; dependabot uses `chore(deps): ...`.
-- Base PHP version is pinned (`php:8.5.8-fpm`) and bumped by dependabot — verify the image still builds and passes the smoke test when merging.
-- Image tags: `latest` (main), `vX.Y.Z` (semver), `<short-sha>` (commits). Releases are `v*` tags.
+- Base PHP version is pinned (`php:8.5.9-fpm`) and bumped by the `update-deps` workflow — verify the image still builds and passes the smoke test when merging.
+- Image tags: `latest` (main), `X.Y.Z`/`X.Y` (semver from `v*` git tags; `docker/metadata-action` strips the leading `v`), `<short-sha>` (commits). Releases are `v*` git tags.
 - Keep `.env.example` ⇄ `README.md` ⇄ templates in sync when the env-var surface changes.
