@@ -175,11 +175,11 @@ volumes:
 
 ## Mail delivery (msmtp)
 
-PHP's `sendmail_path` is `msmtp -t --read-envelope-from`. msmtp derives the
-**SMTP envelope sender from each message's `From:` header** instead of using a
-fixed address. This keeps **SPF, DKIM and DMARC aligned** for sites that send
-mail from more than one domain (e.g. a WordPress/WPML site with both
-`example.com` and `example.nl`):
+PHP's `sendmail_path` is the bundled **`msmtp-sendmail` wrapper**, which runs
+`msmtp -t --read-envelope-from`. msmtp derives the **SMTP envelope sender from
+each message's `From:` header** instead of using a fixed address. This keeps
+**SPF, DKIM and DMARC aligned** for sites that send mail from more than one
+domain (e.g. a WordPress/WPML site with both `example.com` and `example.nl`):
 
 - the relay host is reached on the Docker bridge network (`SMTP_HOST` /
   `SMTP_PORT`, defaults `127.0.0.1:25`);
@@ -187,6 +187,16 @@ mail from more than one domain (e.g. a WordPress/WPML site with both
   header;
 - the envelope domain always matches the `From:` domain, so SPF alignment and
   DKIM signing use the correct domain and DMARC `p=reject` passes.
+
+The wrapper also **strips any `-f` / `--from` option** that PHP/PHPMailer adds
+to the command line. Some plugins set `PHPMailer->Sender = PHPMailer->From`
+(e.g. via `phpmailer_init`), which makes PHPMailer append `-f<Sender>` to the
+sendmail command line. msmtp would then abort with
+`msmtp: cannot use both --from and --read-envelope-from`, making PHP `mail()`
+return false and PHPMailer raise "Could not instantiate mail function." — the
+classic symptom where only that plugin's mail fails while WordPress core mail
+still works. By dropping the envelope sender option, the wrapper keeps the
+From-derived envelope and fixes mail for such plugins.
 
 > **Note:** with the default `msmtp -t` (no `--read-envelope-from`), a single
 > fixed envelope sender breaks delivery for multi-domain sites — the relay's

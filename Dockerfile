@@ -83,13 +83,18 @@ RUN { \
     echo 'session.serialize_handler = igbinary'; \
     } > /usr/local/etc/php/conf.d/session.template
 
-# PHP mail via msmtp. `--read-envelope-from` makes msmtp derive the SMTP
-# envelope sender from each message's From: header instead of the fixed
-# SMTP_FROM. This keeps SPF/DKIM/DMARC aligned for sites that send from
-# multiple domains (e.g. WPML); SMTP_FROM only serves as a fallback then.
+# PHP mail via msmtp. The sendmail_path points at the msmtp-sendmail wrapper
+# (installed in Step 6), which strips any envelope sender option (-f/--from)
+# that PHPMailer may inject and always runs msmtp with --read-envelope-from.
+# That derives the SMTP envelope sender from each message's From: header
+# instead of the fixed SMTP_FROM, keeping SPF/DKIM/DMARC aligned for sites that
+# send from multiple domains (e.g. WPML). It also tolerates plugins that set
+# PHPMailer->Sender, which would otherwise make msmtp fail with
+# "cannot use both --from and --read-envelope-from" (see scripts/msmtp-sendmail).
+# SMTP_FROM only serves as a fallback then.
 RUN { \
     echo 'mail.add_x_header = On'; \
-    echo 'sendmail_path = /usr/bin/msmtp -t --read-envelope-from'; \
+    echo 'sendmail_path = /usr/local/bin/msmtp-sendmail'; \
     } > /usr/local/etc/php/conf.d/mail.template
 
 # --- Step 3: msmtp configuration template ---
@@ -117,9 +122,10 @@ RUN curl -fsSL "https://github.com/wp-cli/wp-cli/releases/download/v${WP_CLI_VER
     && chmod +x /usr/local/bin/wp \
     && wp --info --allow-root
 
-# --- Step 6: Entrypoint script ---
+# --- Step 6: Entrypoint script & sendmail wrapper ---
 COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY scripts/msmtp-sendmail /usr/local/bin/msmtp-sendmail
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/msmtp-sendmail
 
 WORKDIR /var/www/html
 

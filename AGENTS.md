@@ -22,6 +22,7 @@ This image is the **shared base for many production WordPress sites**; each site
 | `Dockerfile` | Image definition: PHP extensions, PECL packages, config **templates** (`*.template` → rendered at runtime) |
 | `docker-entrypoint.sh` | Runtime: validates env, creates the user, renders templates with `envsubst`, writes the FPM pool, starts `php-fpm` |
 | `scripts/wpx` | Host-side WP-CLI wrapper (runs `wp` inside the site's `*-php` container) |
+| `scripts/msmtp-sendmail` | sendmail-compatible wrapper used by `sendmail_path`; strips any `-f`/`--from` PHPMailer injects so `--read-envelope-from` doesn't conflict with plugins that set `PHPMailer->Sender` |
 | `.env.example` | Canonical list of env vars used by the image (plus a few compose-only vars - `CONTAINER_IP`, `WP_PATH`, `WP_DOMAIN`, `LOG_PATH` - listed for stack wiring, not read by the image). **Keep in sync** when adding/renaming vars |
 | `.github/workflows/build-and-push.yml` | Builds & pushes to GHCR on `main` (→ `latest`) and `v*` tags (→ semver) |
 | `.github/workflows/hadolint.yml` | Dockerfile lint (SARIF, non-failing) |
@@ -99,6 +100,7 @@ Rule for new templates: use plain `${VAR}` and apply defaults **before** `envsub
 ## Other gotchas
 
 - `disable_functions` in `wordpress.template` is a deliberate security measure — currently `exec,passthru,shell_exec,system,popen,parse_ini_file,show_source`. History shows it flip-flopped (proc_open was re-enabled for Redis). Do **not** re-enable functions without explicit instruction.
+- **Mail goes through `scripts/msmtp-sendmail`.** The wrapper strips any `-f`/`--from` envelope option that PHP/PHPMailer appends (some plugins set `PHPMailer->Sender = From`), because msmtp runs with `--read-envelope-from` and cannot combine it with `--from`. Do not "simplify" `sendmail_path` back to a bare `msmtp -t --read-envelope-from` — that reintroduces `msmtp: cannot use both --from and --read-envelope-from` for those plugins.
 - `envsubst` replaces **every** `$VAR`/`${VAR}` it finds — a template needing a literal `$` must escape it or generate it another way.
 - The entrypoint **hard-fails** if `PUID`, `PGID`, `USERNAME`, or `CONTAINER_NAME` are missing. Every other config var has a **built-in default** (applied via `export` in the entrypoint before `envsubst` runs), so a missing var is never rendered empty.
 - Runtime user/pool names come from env vars — keep messages/log paths (e.g. `/var/log/php/${CONTAINER_NAME}-error.log`) consistent with them.

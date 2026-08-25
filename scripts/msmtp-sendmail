@@ -1,0 +1,49 @@
+#!/bin/bash
+# msmtp-sendmail: sendmail-compatible wrapper around msmtp.
+#
+# PHP/PHPMailer appends an SMTP envelope sender to the sendmail command line
+# (e.g. `-f<addr>` or `--from=<addr>`) whenever a PHPMailer `Sender` is set.
+# Some plugins (e.g. Booking Calendar) set `Sender = From` via phpmailer_init,
+# which makes msmtp reject the combination when it is also running with
+# `--read-envelope-from`:
+#
+#     msmtp: cannot use both --from and --read-envelope-from
+#
+# That makes PHP mail() return false and PHPMailer raise
+# "Could not instantiate mail function." — the exact symptom where only plugin
+# mail (Sender set) fails while WordPress core mail (Sender empty) still works.
+#
+# This wrapper strips any envelope-from (`-f` / `--from`) argument and always
+# lets msmtp derive the envelope sender from each message's From: header via
+# `--read-envelope-from`. This keeps SPF/DKIM/DMARC aligned (the envelope
+# tracks the From domain) and is robust against plugins that set `Sender`.
+# All other arguments (recipients, `-t`, ...) are forwarded unchanged.
+
+set -euo pipefail
+
+args=()
+skip_next=0
+
+for arg in "$@"; do
+    if [[ $skip_next -eq 1 ]]; then
+        # This token is the value belonging to a previous bare -f/--from.
+        skip_next=0
+        continue
+    fi
+
+    case "$arg" in
+        -f|--from)
+            # Bare flag: the following token is its value; drop both.
+            skip_next=1
+            continue
+            ;;
+        -f*|--from=*)
+            # Attached form: -fVALUE or --from=VALUE; drop it.
+            continue
+            ;;
+    esac
+
+    args+=("$arg")
+done
+
+exec /usr/bin/msmtp -t --read-envelope-from "${args[@]}"
