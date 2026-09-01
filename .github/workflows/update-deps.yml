@@ -97,7 +97,7 @@ jobs:
           # main into it, then add the bump commit on top.
           if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
             echo "Branch $BRANCH exists; syncing with main."
-            git fetch origin "$BRANCH" origin/main
+            git fetch origin "$BRANCH" main
             git checkout -B "$BRANCH" "origin/$BRANCH"
             git merge --no-edit origin/main || { echo "Merge conflict with main; aborting."; git merge --abort; exit 1; }
           else
