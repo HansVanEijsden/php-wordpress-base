@@ -69,17 +69,15 @@ jobs:
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
 
+          # Current versions on main (the 'from' values for the changelog/title).
           CUR_PHP=$(sed -n 's/^FROM php:\([0-9.]*\)-fpm/\1/p' Dockerfile)
           CUR_WP=$(sed -n 's/^ARG WP_CLI_VERSION=\(.*\)/\1/p' Dockerfile)
 
           changed=0
           if [[ -n "${PHP_LATEST:-}" && "$PHP_LATEST" != "$CUR_PHP" ]]; then
-            sed -i "s#^FROM php:${CUR_PHP}-fpm#FROM php:${PHP_LATEST}-fpm#" Dockerfile
             changed=1
           fi
           if [[ -n "${WPCLI_LATEST:-}" && "$WPCLI_LATEST" != "$CUR_WP" ]]; then
-            sed -i "s#^ARG WP_CLI_VERSION=.*#ARG WP_CLI_VERSION=${WPCLI_LATEST}#" Dockerfile
-            sed -i "s#^ARG WP_CLI_SHA512=.*#ARG WP_CLI_SHA512=${WPCLI_SHA}#" Dockerfile
             changed=1
           fi
 
@@ -97,7 +95,7 @@ jobs:
           # main into it, then add the bump commit on top.
           if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
             echo "Branch $BRANCH exists; syncing with main."
-            git fetch origin "$BRANCH" origin/main
+            git fetch origin "$BRANCH" main
             git checkout -B "$BRANCH" "origin/$BRANCH"
             git merge --no-edit origin/main || { echo "Merge conflict with main; aborting."; git merge --abort; exit 1; }
           else
@@ -105,8 +103,27 @@ jobs:
             git checkout -b "$BRANCH" origin/main
           fi
 
-          git add Dockerfile
-          git commit -m "chore(deps): update php base image and WP-CLI"
+          # Apply the bump on the branch's own working tree. Do this AFTER the
+          # branch switch: a pending Dockerfile edit on main would otherwise
+          # block `git checkout -B`. Match against the branch's current values
+          # so an already-bumped branch (e.g. a prior run that never opened a
+          # PR) becomes a clean no-op instead of a failed commit.
+          BR_PHP=$(sed -n 's/^FROM php:\([0-9.]*\)-fpm/\1/p' Dockerfile)
+          BR_WP=$(sed -n 's/^ARG WP_CLI_VERSION=\(.*\)/\1/p' Dockerfile)
+          if [[ -n "${PHP_LATEST:-}" && "$PHP_LATEST" != "$BR_PHP" ]]; then
+            sed -i "s#^FROM php:${BR_PHP}-fpm#FROM php:${PHP_LATEST}-fpm#" Dockerfile
+          fi
+          if [[ -n "${WPCLI_LATEST:-}" && "$WPCLI_LATEST" != "$BR_WP" ]]; then
+            sed -i "s#^ARG WP_CLI_VERSION=.*#ARG WP_CLI_VERSION=${WPCLI_LATEST}#" Dockerfile
+            sed -i "s#^ARG WP_CLI_SHA512=.*#ARG WP_CLI_SHA512=${WPCLI_SHA}#" Dockerfile
+          fi
+
+          # Commit only when the branch actually changed.
+          if ! git diff --quiet -- Dockerfile; then
+            git add Dockerfile
+            git commit -m "chore(deps): update php base image and WP-CLI"
+          fi
+
           git push origin "$BRANCH" || { echo "Push rejected (ruleset?)."; exit 1; }
 
           NEW_PHP="${PHP_LATEST:-$CUR_PHP}"
