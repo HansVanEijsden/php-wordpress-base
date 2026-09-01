@@ -4,9 +4,10 @@ name: Update base dependencies (php + wp-cli)
 #   - PHP base image:  php:8.5.<n>-fpm  (Docker Hub)
 #   - WP-CLI:          2.<m>.<p>        (GitHub release + sha512)
 # and opens/updates a single PR (branch bot/update-base-deps) with the bump.
-# Patch/minor updates within the pinned series are auto-merged by
-# auto-merge.yml. A new major series (php 8.6 / wp-cli 3.x) is intentionally
-# NOT auto-bumped — review that manually.
+# Patch/minor updates within the pinned series are auto-merged: this workflow
+# enables auto-merge (squash) on the PR it opens, because a GITHUB_TOKEN-created
+# PR cannot trigger the separate auto-merge.yml. A new major series (php 8.6 /
+# wp-cli 3.x) is intentionally NOT auto-bumped — review that manually.
 #
 # Replaces the (slow, rate-limited) Dependabot docker updates for the FROM line.
 
@@ -129,7 +130,7 @@ jobs:
           NEW_PHP="${PHP_LATEST:-$CUR_PHP}"
           NEW_WP="${WPCLI_LATEST:-$CUR_WP}"
           TITLE="chore(deps): php ${CUR_PHP}->${NEW_PHP}, wp-cli ${CUR_WP}->${NEW_WP}"
-          BODY=$(printf 'Automatic update by the update-base-deps workflow.\n\n- PHP base image: php:%s-fpm -> php:%s-fpm\n- WP-CLI: %s -> %s (sha512 verified at build)\n\nThe auto-merge workflow merges this automatically (squash).' "$CUR_PHP" "$NEW_PHP" "$CUR_WP" "$NEW_WP")
+          BODY=$(printf 'Automatic update by the update-base-deps workflow.\n\n- PHP base image: php:%s-fpm -> php:%s-fpm\n- WP-CLI: %s -> %s (sha512 verified at build)\n\nThis PR is auto-merged (squash) once it is ready.' "$CUR_PHP" "$NEW_PHP" "$CUR_WP" "$NEW_WP")
 
           if gh pr view "$BRANCH" --json number --jq .number >/dev/null 2>&1; then
             gh pr edit "$BRANCH" --title "$TITLE" --body "$BODY" --add-label dependencies
@@ -138,3 +139,8 @@ jobs:
             gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$BODY" --label dependencies
             echo "New PR created (branch $BRANCH)."
           fi
+
+          # Enable auto-merge (squash). A PR opened from here carries GITHUB_TOKEN,
+          # whose events do not start the separate auto-merge workflow, so enable
+          # auto-merge on the PR directly in this run. Fails loudly if it can't.
+          gh pr merge --auto --squash "$BRANCH" || { echo "Could not enable auto-merge on $BRANCH."; exit 1; }

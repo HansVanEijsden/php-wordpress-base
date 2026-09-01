@@ -26,8 +26,8 @@ This image is the **shared base for many production WordPress sites**; each site
 | `.env.example` | Canonical list of env vars used by the image (plus a few compose-only vars - `CONTAINER_IP`, `WP_PATH`, `WP_DOMAIN`, `LOG_PATH` - listed for stack wiring, not read by the image). **Keep in sync** when adding/renaming vars |
 | `.github/workflows/build-and-push.yml` | Builds & pushes to GHCR on `main` (→ `latest`) and `v*` tags (→ semver) |
 | `.github/workflows/hadolint.yml` | Dockerfile lint (SARIF, non-failing) |
-| `.github/workflows/update-deps.yml` | Daily base-image + WP-CLI bumps (`php:8.5.9-fpm`) via bot branch `bot/update-base-deps`, commit prefix `chore(deps)` |
-| `.github/workflows/auto-merge.yml` | Auto-merges dependency PRs |
+| `.github/workflows/update-deps.yml` | Daily base-image + WP-CLI bumps (`php:8.5.9-fpm`) via bot branch `bot/update-base-deps`, commit prefix `chore(deps)`; enables auto-merge (squash) on its own PR |
+| `.github/workflows/auto-merge.yml` | Auto-merges Dependabot dependency PRs (the update-base-deps bot enables auto-merge on its own PR in `update-deps.yml`) |
 | `.github/dependabot.yml` | `github-actions` ecosystem updates (weekly); base-image bumps moved to `update-deps.yml` |
 
 ## Build & test
