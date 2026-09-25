@@ -1,5 +1,5 @@
 # Use the official PHP 8.5 FPM image on Debian 13 (Trixie)
-FROM php:8.5.10-fpm
+FROM php:8.5.11-fpm
 
 # Build metadata for GitHub Container Registry
 ARG BUILD_DATE
