@@ -26,8 +26,8 @@ This image is the **shared base for many production WordPress sites**; each site
 | `.env.example` | Canonical list of env vars used by the image (plus a few compose-only vars - `CONTAINER_IP`, `WP_PATH`, `WP_DOMAIN`, `LOG_PATH` - listed for stack wiring, not read by the image). **Keep in sync** when adding/renaming vars |
 | `.github/workflows/build-and-push.yml` | Builds & pushes to GHCR on `main` (→ `latest`) and `v*` tags (→ semver) |
 | `.github/workflows/hadolint.yml` | Dockerfile lint (SARIF, non-failing) |
-| `.github/workflows/update-deps.yml` | Daily base-image + WP-CLI bumps (`php:8.5.9-fpm`) via bot branch `bot/update-base-deps`, commit prefix `chore(deps)`; enables auto-merge (squash) on its own PR |
-| `.github/workflows/auto-merge.yml` | Auto-merges Dependabot dependency PRs (the update-base-deps bot enables auto-merge on its own PR in `update-deps.yml`) |
+| `.github/workflows/update-deps.yml` | Daily base-image + WP-CLI bumps (`php:8.5.x-fpm`); commits patch bumps **straight to `main`** (no branch, no PR), dispatches `build-and-push.yml`, and opens one issue if a new upstream series (php 8.6 / wp-cli 3.x) appears |
+| `.github/workflows/auto-merge.yml` | Auto-merges Dependabot `github-actions` PRs (minor/patch); base-image bumps are not PRs, so they don't go through it |
 | `.github/dependabot.yml` | `github-actions` ecosystem updates (weekly); base-image bumps moved to `update-deps.yml` |
 
 ## Build & test
@@ -109,6 +109,6 @@ Rule for new templates: use plain `${VAR}` and apply defaults **before** `envsub
 ## Conventions
 
 - **Docs and code comments are in English.** Commit messages are English, descriptive, one logical change per commit; dependabot uses `chore(deps): ...`.
-- Base PHP version is pinned (`php:8.5.9-fpm`) and bumped by the `update-deps` workflow — verify the image still builds and passes the smoke test when merging.
+- Base PHP version is pinned (`php:8.5.x-fpm`) and bumped by the `update-deps` workflow, which commits the bump to `main` and triggers the image build — verify the image still builds and passes the smoke test when moving the pinned series.
 - Image tags: `latest` (main), `X.Y.Z`/`X.Y` (semver from `v*` git tags; `docker/metadata-action` strips the leading `v`), `<short-sha>` (commits). Releases are `v*` git tags.
 - Keep `.env.example` ⇄ `README.md` ⇄ templates in sync when the env-var surface changes.

@@ -3,11 +3,15 @@ name: Update base dependencies (php + wp-cli)
 # Checks daily (and on demand) for newer:
 #   - PHP base image:  php:8.5.<n>-fpm  (Docker Hub)
 #   - WP-CLI:          2.<m>.<p>        (GitHub release + sha512)
-# and opens/updates a single PR (branch bot/update-base-deps) with the bump.
-# Patch/minor updates within the pinned series are auto-merged: this workflow
-# enables auto-merge (squash) on the PR it opens, because a GITHUB_TOKEN-created
-# PR cannot trigger the separate auto-merge.yml. A new major series (php 8.6 /
-# wp-cli 3.x) is intentionally NOT auto-bumped — review that manually.
+#
+# Patch bumps within the pinned series are committed straight to `main`: no bot
+# branch, no PR, nothing to keep in sync and nothing left behind. A commit
+# pushed with GITHUB_TOKEN does not start other workflows, so build-and-push.yml
+# is dispatched explicitly at the end (otherwise :latest would stay stale).
+#
+# A new *series* (php 8.6, wp-cli 3.x) is deliberately NOT bumped: this workflow
+# opens a single issue instead, so the move stays a deliberate change (edit
+# PHP_SERIES / WPCLI_SERIES below and re-verify the image).
 #
 # Replaces the (slow, rate-limited) Dependabot docker updates for the FROM line.
 
@@ -17,18 +21,26 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write # commit + push the bump to main
+  actions: write # dispatch build-and-push.yml (GITHUB_TOKEN pushes don't trigger it)
+  issues: write # announce a new upstream series
 
 concurrency:
   group: update-base-deps
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+env:
+  # The pinned series this repo tracks. Moving these is a reviewed change:
+  # bump the value, then verify the image still builds and smoke-tests.
+  PHP_SERIES: "8.5"
+  WPCLI_SERIES: "2"
+  BUILD_WORKFLOW: "build-and-push.yml"
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v7
         with:
           ref: main
@@ -42,27 +54,61 @@ jobs:
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
 
-          # Latest stable php 8.5.x-fpm tag (numeric patch only, no RC/rc).
-          LAT_PHP=$(curl -fsSL "https://hub.docker.com/v2/repositories/library/php/tags?name=8.5&page_size=100&ordering=last_updated" \
-            | python3 -c "import sys,json,re; tags=[t['name'] for t in json.load(sys.stdin)['results']]; f=[t for t in tags if re.fullmatch(r'8\.5\.\d+-fpm',t)]; print(sorted(f,key=lambda x:[int(i) for i in x[:-4].split('.')])[-1][:-4])")
+          # Newest patch in the pinned php series (stable numeric tags only, no RC).
+          LAT_PHP=$(curl -fsSL "https://hub.docker.com/v2/repositories/library/php/tags?name=${PHP_SERIES}&page_size=100&ordering=last_updated" \
+            | python3 -c '
+          import json, os, re, sys
+          series = os.environ["PHP_SERIES"]
+          pat = re.compile(re.escape(series) + r"\.(\d+)-fpm")
+          tags = [t["name"] for t in json.load(sys.stdin)["results"]]
+          patches = sorted(int(m.group(1)) for t in tags if (m := pat.fullmatch(t)))
+          print(f"{series}.{patches[-1]}" if patches else "")
+          ')
 
-          # Latest wp-cli release; only auto-bump within the 2.x series.
+          # Newest php series published, so a series move (e.g. 8.6) is noticed.
+          SERIES_LATEST=$(curl -fsSL "https://hub.docker.com/v2/repositories/library/php/tags?page_size=100&ordering=last_updated" \
+            | python3 -c '
+          import json, re, sys
+          rel = re.compile(r"(\d+)\.(\d+)\.\d+-fpm")
+          found = [tuple(map(int, m.groups()))[:2] for t in json.load(sys.stdin)["results"]
+                   for m in [rel.fullmatch(t["name"])] if m]
+          print(".".join(map(str, max(found))) if found else "")
+          ')
+
+          NEW_PHP_SERIES=""
+          if [[ -n "$SERIES_LATEST" && "$SERIES_LATEST" != "$PHP_SERIES" ]] \
+            && [[ "$(printf '%s\n%s\n' "$PHP_SERIES" "$SERIES_LATEST" | sort -V | tail -1)" == "$SERIES_LATEST" ]]; then
+            NEW_PHP_SERIES="$SERIES_LATEST"
+          fi
+
+          # Latest wp-cli release; only auto-bump within the pinned series.
           WP_TAG=$(gh api repos/wp-cli/wp-cli/releases/latest --jq .tag_name)
-          LAT_WP="${WP_TAG#v}"
+          WP_VER="${WP_TAG#v}"
+          LAT_WP=""
           LAT_SHA=""
-          if [[ "$LAT_WP" == 2.* ]]; then
-            LAT_SHA=$(curl -fsSL "https://github.com/wp-cli/wp-cli/releases/download/v${LAT_WP}/wp-cli-${LAT_WP}.phar.sha512" | awk '{print $1}')
+          NEW_WPCLI_SERIES=""
+          if [[ "$WP_VER" == "${WPCLI_SERIES}."* ]]; then
+            LAT_WP="$WP_VER"
+            LAT_SHA=$(curl -fsSL "https://github.com/wp-cli/wp-cli/releases/download/v${WP_VER}/wp-cli-${WP_VER}.phar.sha512" | awk '{print $1}')
+            if [[ -z "$LAT_SHA" ]]; then
+              # The Dockerfile verifies this sha512 at build time; an empty one
+              # would produce a broken image, so skip the bump instead.
+              echo "No sha512 published for wp-cli ${LAT_WP}; skipping the wp-cli bump." >&2
+              LAT_WP=""
+            fi
           else
-            LAT_WP=""
+            NEW_WPCLI_SERIES="${WP_VER%%.*}"
           fi
 
           echo "php_latest=$LAT_PHP" >> "$GITHUB_OUTPUT"
           echo "wpcli_latest=$LAT_WP" >> "$GITHUB_OUTPUT"
           echo "wpcli_sha=$LAT_SHA" >> "$GITHUB_OUTPUT"
+          echo "new_php_series=$NEW_PHP_SERIES" >> "$GITHUB_OUTPUT"
+          echo "new_wpcli_series=$NEW_WPCLI_SERIES" >> "$GITHUB_OUTPUT"
 
-      - name: Apply bump and open/update PR
+      - name: Commit the patch bump to main
+        id: bump
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PHP_LATEST: ${{ steps.detect.outputs.php_latest }}
           WPCLI_LATEST: ${{ steps.detect.outputs.wpcli_latest }}
           WPCLI_SHA: ${{ steps.detect.outputs.wpcli_sha }}
@@ -70,77 +116,96 @@ jobs:
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
 
-          # Current versions on main (the 'from' values for the changelog/title).
+          # Current pins on main (the 'from' values for the commit message).
           CUR_PHP=$(sed -n 's/^FROM php:\([0-9.]*\)-fpm/\1/p' Dockerfile)
           CUR_WP=$(sed -n 's/^ARG WP_CLI_VERSION=\(.*\)/\1/p' Dockerfile)
-
-          changed=0
-          if [[ -n "${PHP_LATEST:-}" && "$PHP_LATEST" != "$CUR_PHP" ]]; then
-            changed=1
-          fi
-          if [[ -n "${WPCLI_LATEST:-}" && "$WPCLI_LATEST" != "$CUR_WP" ]]; then
-            changed=1
+          if [[ -z "$CUR_PHP" || -z "$CUR_WP" ]]; then
+            echo "Could not read the pinned versions from Dockerfile." >&2
+            exit 1
           fi
 
-          if [[ "$changed" -eq 0 ]]; then
+          NEW_PHP="${PHP_LATEST:-$CUR_PHP}"
+          NEW_WP="${WPCLI_LATEST:-$CUR_WP}"
+          if [[ "$NEW_PHP" == "$CUR_PHP" && "$NEW_WP" == "$CUR_WP" ]]; then
             echo "Nothing to do: php=$CUR_PHP, wp-cli=$CUR_WP (both current)."
             exit 0
           fi
 
-          BRANCH="bot/update-base-deps"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # The repo ruleset blocks force-push (non_fast_forward) and branch
-          # deletion. Reuse the branch with fast-forward-only pushes: merge
-          # main into it, then add the bump commit on top.
-          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
-            echo "Branch $BRANCH exists; syncing with main."
-            git fetch origin "$BRANCH" main
-            git checkout -B "$BRANCH" "origin/$BRANCH"
-            git merge --no-edit origin/main || { echo "Merge conflict with main; aborting."; git merge --abort; exit 1; }
-          else
-            echo "New branch $BRANCH from main."
-            git checkout -b "$BRANCH" origin/main
+          if [[ "$NEW_PHP" != "$CUR_PHP" ]]; then
+            sed -i "s#^FROM php:${CUR_PHP}-fpm#FROM php:${NEW_PHP}-fpm#" Dockerfile
           fi
-
-          # Apply the bump on the branch's own working tree. Do this AFTER the
-          # branch switch: a pending Dockerfile edit on main would otherwise
-          # block `git checkout -B`. Match against the branch's current values
-          # so an already-bumped branch (e.g. a prior run that never opened a
-          # PR) becomes a clean no-op instead of a failed commit.
-          BR_PHP=$(sed -n 's/^FROM php:\([0-9.]*\)-fpm/\1/p' Dockerfile)
-          BR_WP=$(sed -n 's/^ARG WP_CLI_VERSION=\(.*\)/\1/p' Dockerfile)
-          if [[ -n "${PHP_LATEST:-}" && "$PHP_LATEST" != "$BR_PHP" ]]; then
-            sed -i "s#^FROM php:${BR_PHP}-fpm#FROM php:${PHP_LATEST}-fpm#" Dockerfile
-          fi
-          if [[ -n "${WPCLI_LATEST:-}" && "$WPCLI_LATEST" != "$BR_WP" ]]; then
-            sed -i "s#^ARG WP_CLI_VERSION=.*#ARG WP_CLI_VERSION=${WPCLI_LATEST}#" Dockerfile
+          if [[ "$NEW_WP" != "$CUR_WP" ]]; then
+            sed -i "s#^ARG WP_CLI_VERSION=.*#ARG WP_CLI_VERSION=${NEW_WP}#" Dockerfile
             sed -i "s#^ARG WP_CLI_SHA512=.*#ARG WP_CLI_SHA512=${WPCLI_SHA}#" Dockerfile
           fi
 
-          # Commit only when the branch actually changed.
-          if ! git diff --quiet -- Dockerfile; then
-            git add Dockerfile
-            git commit -m "chore(deps): update php base image and WP-CLI"
+          if git diff --quiet -- Dockerfile; then
+            echo "Dockerfile unchanged although the versions differ; aborting." >&2
+            exit 1
           fi
 
-          git push origin "$BRANCH" || { echo "Push rejected (ruleset?)."; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Dockerfile
+          git commit -m "chore(deps): php ${CUR_PHP}->${NEW_PHP}, wp-cli ${CUR_WP}->${NEW_WP}"
 
-          NEW_PHP="${PHP_LATEST:-$CUR_PHP}"
-          NEW_WP="${WPCLI_LATEST:-$CUR_WP}"
-          TITLE="chore(deps): php ${CUR_PHP}->${NEW_PHP}, wp-cli ${CUR_WP}->${NEW_WP}"
-          BODY=$(printf 'Automatic update by the update-base-deps workflow.\n\n- PHP base image: php:%s-fpm -> php:%s-fpm\n- WP-CLI: %s -> %s (sha512 verified at build)\n\nThis PR is auto-merged (squash) once it is ready.' "$CUR_PHP" "$NEW_PHP" "$CUR_WP" "$NEW_WP")
+          # Push fast-forward to main. HEAD is addressed explicitly because the
+          # checkout may be detached; rebasing first keeps the push a
+          # fast-forward (the ruleset rejects anything else).
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:refs/heads/main
 
-          if gh pr view "$BRANCH" --json number --jq .number >/dev/null 2>&1; then
-            gh pr edit "$BRANCH" --title "$TITLE" --body "$BODY" --add-label dependencies
-            echo "Existing PR updated (branch $BRANCH)."
-          else
-            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$BODY" --label dependencies
-            echo "New PR created (branch $BRANCH)."
+          echo "pushed=1" >> "$GITHUB_OUTPUT"
+
+      - name: Rebuild the published image
+        # A GITHUB_TOKEN push does not trigger build-and-push.yml; dispatch it
+        # explicitly so :latest actually follows the bump.
+        if: steps.bump.outputs.pushed == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run "$BUILD_WORKFLOW" --ref main
+
+      - name: Announce a new upstream series
+        # One issue per series, never reopened once closed, so this cannot turn
+        # into a daily reminder. The bump itself stays a manual, reviewed move.
+        if: steps.detect.outputs.new_php_series != '' || steps.detect.outputs.new_wpcli_series != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_PHP_SERIES: ${{ steps.detect.outputs.new_php_series }}
+          NEW_WPCLI_SERIES: ${{ steps.detect.outputs.new_wpcli_series }}
+        run: |
+          set -euo pipefail
+
+          announce() {
+            local title="$1" body="$2"
+            if TITLE="$title" gh issue list --state all --limit 100 --json title \
+              --jq '.[] | select(.title == env.TITLE) | .number' | grep -q .; then
+              echo "Already tracked: $title"
+              return 0
+            fi
+            gh issue create --title "$title" --body "$body"
+          }
+
+          if [[ -n "$NEW_PHP_SERIES" ]]; then
+            announce "Dependency series move available: PHP ${NEW_PHP_SERIES}" \
+              "Docker Hub now publishes \`php:${NEW_PHP_SERIES}.x-fpm\`, while this repo pins \`php:${PHP_SERIES}.x-fpm\`.
+
+          The daily \`update-deps\` workflow only tracks the pinned series, so this move is deliberate:
+
+          1. Set \`PHP_SERIES: \"${NEW_PHP_SERIES}\"\` in \`.github/workflows/update-deps.yml\`.
+          2. Trigger the workflow (or bump \`FROM php:...\` by hand) and let it build.
+          3. Verify the image (\`docker build\` + smoke test) and watch for PHP deprecations in the sites.
+          4. Recreate the WP containers against the new image (see AGENTS.md → Deploying a change)."
           fi
 
-          # Enable auto-merge (squash). A PR opened from here carries GITHUB_TOKEN,
-          # whose events do not start the separate auto-merge workflow, so enable
-          # auto-merge on the PR directly in this run. Fails loudly if it can't.
-          gh pr merge --auto --squash "$BRANCH" || { echo "Could not enable auto-merge on $BRANCH."; exit 1; }
+          if [[ -n "$NEW_WPCLI_SERIES" ]]; then
+            announce "Dependency series move available: WP-CLI ${NEW_WPCLI_SERIES}.x" \
+              "WP-CLI now releases \`${NEW_WPCLI_SERIES}.x\`, while this repo pins \`${WPCLI_SERIES}.x\`.
+
+          The daily \`update-deps\` workflow only tracks the pinned series, so this move is deliberate:
+
+          1. Set \`WPCLI_SERIES: \"${NEW_WPCLI_SERIES}\"\` in \`.github/workflows/update-deps.yml\`.
+          2. Trigger the workflow; it bumps \`WP_CLI_VERSION\` + \`WP_CLI_SHA512\` together.
+          3. Verify the image builds (the Dockerfile checks the sha512) and smoke-test \`wp --info\`."
+          fi

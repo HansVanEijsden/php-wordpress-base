@@ -1,8 +1,8 @@
 name: Bot auto-merge
 
-# Auto-merges (squash) dependency PRs:
-#   - Dependabot PRs (minor/patch, via dependabot/fetch-metadata)
-#   - The update-base-deps bot PRs (github-actions[bot], labelled "dependencies")
+# Auto-merges (squash) Dependabot PRs (minor/patch, via dependabot/fetch-metadata).
+# The base-image / WP-CLI bumps are handled by update-deps.yml, which commits
+# straight to main — it opens no PR, so it needs no entry here.
 on:
   pull_request_target:
 
@@ -23,18 +23,6 @@ jobs:
 
       - name: Enable auto-merge for minor and patch updates
         if: ${{ steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor' }}
-        run: gh pr merge --auto --squash "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  base-deps-bot:
-    runs-on: ubuntu-latest
-    if: >-
-      github.actor == 'github-actions[bot]' &&
-      contains(github.event.pull_request.labels.*.name, 'dependencies')
-    steps:
-      - name: Enable auto-merge for base-deps bot PRs
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
