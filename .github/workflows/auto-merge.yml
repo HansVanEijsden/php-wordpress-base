@@ -3,6 +3,11 @@ name: Bot auto-merge
 # Auto-merges (squash) Dependabot PRs (minor/patch, via dependabot/fetch-metadata).
 # The base-image / WP-CLI bumps are handled by update-deps.yml, which commits
 # straight to main — it opens no PR, so it needs no entry here.
+#
+# Merges directly instead of using `--auto`: this repo has "Allow auto-merge"
+# turned off, so `--auto` fails with "Auto merge is not allowed for this
+# repository". No status checks are required on main, so a direct squash merge
+# has the same effect — revisit if required checks are ever added.
 on:
   pull_request_target:
 
@@ -21,9 +26,9 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Enable auto-merge for minor and patch updates
+      - name: Merge minor and patch updates
         if: ${{ steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor' }}
-        run: gh pr merge --auto --squash "$PR_URL"
+        run: gh pr merge --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
