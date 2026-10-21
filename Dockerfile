@@ -34,10 +34,15 @@ RUN apt-get update && apt-get install -y \
     zip \
     bcmath \
     soap \
-    && pecl install igbinary \
-    && pecl install --configureoptions 'with-igbinary="yes"' apcu \
-    && pecl install imagick \
-    && pecl install --configureoptions 'enable-redis-igbinary="yes"' redis \
+    && mkdir -p /tmp/pecl \
+    && curl -fsSL --retry 50 --retry-delay 2 --retry-all-errors -o /tmp/pecl/igbinary.tgz https://pecl.php.net/get/igbinary-3.2.17RC1.tgz \
+    && curl -fsSL --retry 50 --retry-delay 2 --retry-all-errors -o /tmp/pecl/apcu.tgz https://pecl.php.net/get/apcu-5.1.28.tgz \
+    && curl -fsSL --retry 50 --retry-delay 2 --retry-all-errors -o /tmp/pecl/imagick.tgz https://pecl.php.net/get/imagick-3.8.1.tgz \
+    && curl -fsSL --retry 50 --retry-delay 2 --retry-all-errors -o /tmp/pecl/redis.tgz https://pecl.php.net/get/redis-6.3.0.tgz \
+    && pecl install /tmp/pecl/igbinary.tgz \
+    && pecl install --configureoptions 'with-igbinary="yes"' /tmp/pecl/apcu.tgz \
+    && pecl install /tmp/pecl/imagick.tgz \
+    && pecl install --configureoptions 'enable-redis-igbinary="yes"' /tmp/pecl/redis.tgz \
     && docker-php-ext-enable igbinary apcu imagick redis \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
