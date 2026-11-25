@@ -179,7 +179,7 @@ jobs:
 
           announce() {
             local title="$1" body="$2"
-            if TITLE="$title" gh issue list --state all --limit 100 --json title \
+            if TITLE="$title" gh issue list --state all --limit 100 --json title,number \
               --jq '.[] | select(.title == env.TITLE) | .number' | grep -q .; then
               echo "Already tracked: $title"
               return 0
